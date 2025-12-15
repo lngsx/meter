@@ -3,7 +3,7 @@ use std::error::Error;
 
 use jiff::Zoned;
 
-use crate::model::usage_report::MessagesUsageReport;
+use crate::types::MessagesUsageReport;
 
 // Not this time.
 // use ureq::Error;

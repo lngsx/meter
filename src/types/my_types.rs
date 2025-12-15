@@ -95,7 +95,7 @@ pub struct UsefulUsageReport {
 // Newer implementation.
 
 #[derive(Debug)]
-pub struct ModelPricing {
+pub struct PricingTable {
     pub base_model_name: &'static str,
     pub context_window: &'static str,
     pub input_multiplier: f64,

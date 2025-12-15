@@ -1,45 +1,15 @@
-mod claude_client;
-mod model;
+mod config;
+mod io;
+mod types;
 
 use std::error::Error;
 
 use spinoff::{Color, Spinner, spinners};
 
-use crate::model::usage_report::{MessagesUsageReport, ModelPricing};
-use claude_client::fetch;
+use config::pricing_table::PRICING;
+use io::claude_client::fetch;
 
-static PRICING: &[ModelPricing] = &[
-    ModelPricing {
-        base_model_name: "claude-haiku-4-5",
-        context_window: "0-200k",
-        input_multiplier: 1.0,
-        output_multiplier: 5.0,
-    },
-    ModelPricing {
-        base_model_name: "claude-sonnet-4-5",
-        context_window: "0-200k",
-        input_multiplier: 3.0,
-        output_multiplier: 15.0,
-    },
-    ModelPricing {
-        base_model_name: "claude-sonnet-4-5",
-        context_window: "200k-1M",
-        input_multiplier: 6.0,
-        output_multiplier: 22.5,
-    },
-    ModelPricing {
-        base_model_name: "claude-sonnet-4",
-        context_window: "0-200k",
-        input_multiplier: 3.0,
-        output_multiplier: 15.0,
-    },
-    ModelPricing {
-        base_model_name: "claude-sonnet-4",
-        context_window: "200k-1M",
-        input_multiplier: 6.0,
-        output_multiplier: 22.5,
-    },
-];
+use types::MessagesUsageReport;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut spinner = Spinner::new(spinners::Dots, "Retrieving...", Color::Blue);
