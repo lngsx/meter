@@ -1,10 +1,13 @@
-#![allow(dead_code)] // Add this line at the very top of the file
+#![allow(dead_code)] // To silence the compiler warnings.
 
 use serde::{Deserialize, Serialize};
 
 // These were all llm generated from this:
 // https://platform.claude.com/docs/en/api/admin/usage_report/retrieve_messages
 // I was too lazy to do it by hand. 🙂
+//
+// Note that the type of tokens has to be integer and be later converted during calculation
+// for all the good stuff; for example, it suggests intentionality, discreteness, and countability.
 
 /// Response for the Get Messages Usage Report endpoint.
 ///
@@ -30,9 +33,6 @@ pub struct UsageDataBucket {
     /// List of usage items for this time bucket.
     pub results: Vec<UsageResult>,
 }
-
-// Note that the type of tokens has to be integer and be later converted during calculation
-// for all the good stuff; for example, it suggests intentionality, discreteness, and countability.
 
 /// Represents a single usage aggregation result.
 ///
@@ -84,9 +84,20 @@ pub struct CacheCreationUsage {
 }
 
 /// For processing.
+/// Delete later. Don't need it anymore.
 #[derive(Debug)]
 pub struct UsefulUsageReport {
     pub uncached_input_tokens: u64,
     pub cache_read_input_tokens: u64,
     pub output_tokens: u64,
+}
+
+// Newer implementation.
+
+#[derive(Debug)]
+pub struct ModelPricing {
+    pub base_model_name: &'static str,
+    pub context_window: &'static str,
+    pub input_multiplier: f64,
+    pub output_multiplier: f64,
 }
