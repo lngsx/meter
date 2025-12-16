@@ -1,88 +1,95 @@
+extern crate dirs;
+
+mod calculation;
 mod config;
 mod io;
 mod types;
 
 use std::error::Error;
 
+use jiff::Zoned;
 use spinoff::{Color, Spinner, spinners};
-
-use config::pricing_table::PRICING;
-use io::claude_client::fetch;
 
 use types::MessagesUsageReport;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut spinner = Spinner::new(spinners::Dots, "Retrieving...", Color::Blue);
+    // Do this because when it hits the cache, the spinner is not needed, and the spinner api
+    // itself doesn't provide a way to create an empty instance, so I have to use this trick.
+    // By declaring an empty option beforehand, I can assign the spinner to it as needed.
+    let mut spinner_container: Option<Spinner> = None;
 
-    let body: MessagesUsageReport = fetch()?;
+    // Use this to make an api call, it has to be aligned with my time.
+    let zoned_now = Zoned::now();
 
-    let summed = body
-        .data
-        .iter()
-        .flat_map(|bucket| &bucket.results) // pluck it.
-        .fold(0.0, |summed_result, result_entry| {
-            let context_window = &result_entry.context_window;
+    // System time is a naked utc time.
+    // So, use this to work with the system, cache retrival.
+    let system_now = &zoned_now.in_tz("UTC")?.timestamp();
 
-            // Find the pricing data from the lookup table.
-            let pricing_data = PRICING.iter().find(|table_entry| {
-                result_entry.model.as_ref().is_some_and(|full_model_name| {
-                    // This will match "claude-sonnet-4-5" from the full name "claude-sonnet-4-5-datexyz"
-                    full_model_name.starts_with(table_entry.base_model_name)
-                })
-            });
+    // I am going to make this an input argument in the future.
+    let ttl_minutes: i64 = 1;
 
-            // I am too lazy to add every models into the table.
-            // I just wanted to be explicit here.
-            let pricing = pricing_data.unwrap_or_else(|| {
-                panic!(
-                    "🙏 Sorry! Pricing configuration is missing: \n{:?}\n{:?}.\n\
-                    Please inform the author to update the pricing table.",
-                    result_entry.model, context_window
-                );
-            });
+    let cache_dir = dirs::cache_dir()
+        .expect("Could not find a cache directory.")
+        .join("meter")
+        .join("claude");
 
-            // Dev thing.
-            // println!("{:?}", multiplier);
+    // I will improve this later. I have some ideas about it.
+    let cache_file_path = &cache_dir.join("cache");
 
-            // Collect every input tokens.
-            // No ephemeral input cache thing because I don't know what it is - -'
-            let total_input_tokens =
-                result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
+    let output_message: String =
+        match io::cache::try_retrieve_cache(cache_file_path, &ttl_minutes, system_now) {
+            // Cache hit. The content is ready to use.
+            Ok(Some(string)) => string,
 
-            let total_output_tokens = result_entry.output_tokens;
+            // No cache, expired, or it doesn't exist, so it's okay to refresh.
+            Ok(None) => {
+                spinner_container = create_spinner();
 
-            // Calculate costs (convert tokens to millions).
-            // Then apply multiplier to each.
-            // let input_cost = (total_input_tokens as f64 / 1_000_000.0) * multiplier.input_cost;
-            // let output_cost = (total_output_tokens as f64 / 1_000_000.0) * multiplier.output_cost;
+                let body: MessagesUsageReport = io::claude_client::fetch(&zoned_now)?;
 
-            let input_cost = calculate_cost(total_input_tokens, pricing.input_multiplier);
-            let output_cost = calculate_cost(total_output_tokens, pricing.output_multiplier);
+                let summed = calculation::claude::sum(body);
 
-            let total_cost = input_cost + output_cost;
+                format(summed)
+            }
 
-            // Dev thing.
-            // println!("{:?}", total_cost);
+            // This program must not be run without a cache.
+            //
+            // It's meant to be used inside a tmux plugin, which may be invoked repeatedly
+            // based on its refresh rate (I don't know the exact number, but I am sure it must be
+            // very frequent), in multiple instances.
+            //
+            // The result of the command has to be memoized, and when that very command is asked
+            // again, we return the result immediately from the filesystem.
+            // That was the initial design. I really have no idea what it would be in the
+            // real implementation. Let's hope it works!
+            //
+            // So, we can't let it silently break inside.
+            // That's why I have to make this explicit.
+            Err(e) => {
+                return Err(e);
+            }
+        };
 
-            total_cost + summed_result
-        });
+    // A simple way to check the output validity, for now.
+    if !output_message.is_empty() {
+        io::cache::try_write_cache(cache_file_path, &output_message, &ttl_minutes, system_now)?;
+    }
 
-    let summed_message = format!("${:.2?}", summed);
-
-    // println!("${:.2?}", summed);
-    // println!("{}", &summed_message);
-
-    spinner.stop_with_message(&summed_message);
+    // Print the result.
+    match spinner_container.as_mut() {
+        Some(s) => s.stop_with_message(&output_message),
+        None => println!("{}", output_message),
+    }
 
     Ok(())
 }
 
 // private
 
-fn calculate_cost(tokens: u64, price_per_million: f64) -> f64 {
-    // Learning note: it must be converted here because the token is stored as an integer
-    // and the multiplier is a float.
-    let tokens_in_millions = tokens as f64 / 1_000_000.0;
+fn format(calculated_number: f64) -> String {
+    format!("${:.2?}", calculated_number)
+}
 
-    tokens_in_millions * price_per_million
+fn create_spinner() -> Option<Spinner> {
+    Some(Spinner::new(spinners::Dots, "Retrieving...", Color::Blue))
 }

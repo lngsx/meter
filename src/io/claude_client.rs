@@ -13,12 +13,14 @@ const BUCKET_WIDTH: &str = "1h";
 const USAGE_REPORT_ENDPOINT: &str =
     "https://api.anthropic.com/v1/organizations/usage_report/messages";
 
-pub fn fetch() -> Result<MessagesUsageReport, Box<dyn Error>> {
+pub fn fetch(zoned_now: &Zoned) -> Result<MessagesUsageReport, Box<dyn Error>> {
+    let starting_at = start_of_day(zoned_now)?;
+
     let request = ureq::get(USAGE_REPORT_ENDPOINT)
         .header("anthropic-version", API_VERSION)
         .header("X-Api-Key", admin_key()?)
         // ranging, sizing.
-        .query("starting_at", starting_at()?)
+        .query("starting_at", starting_at)
         // .query("starting_at", "2025-12-11T17:00:00Z")
         .query("bucket_width", BUCKET_WIDTH)
         // grouping.
@@ -38,14 +40,12 @@ pub fn fetch() -> Result<MessagesUsageReport, Box<dyn Error>> {
 // private
 
 // Compose timestring.
-fn starting_at() -> Result<String, jiff::Error> {
-    let start_of_day = Zoned::now().start_of_day()?;
+fn start_of_day(zoned_now: &Zoned) -> Result<String, jiff::Error> {
+    // let start_of_day = Zoned::now().start_of_day()?;
+    let start_of_day = zoned_now.start_of_day()?;
 
     // rcf 3339
     let timestamp = start_of_day.timestamp().to_string();
-
-    // Just for dev. I will later remove it.
-    // println!("timestamp: {}", timestamp);
 
     Ok(timestamp)
 }
