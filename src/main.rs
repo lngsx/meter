@@ -8,11 +8,14 @@ use std::error::Error;
 
 use clap::Parser;
 use jiff::Zoned;
+use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
+use std::hash::Hasher;
+use twox_hash::XxHash64;
 
 use io::claude_client::MessagesUsageReport;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Serialize, Debug)]
 #[command(name = "tad", version)]
 struct Args {
     // Skip animations
@@ -45,6 +48,7 @@ struct Args {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
+    let args_signature = create_args_signature(&args);
 
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
@@ -67,7 +71,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         .join("claude");
 
     // I will improve this later. I have some ideas about it.
-    let cache_file_path = &cache_dir.join("cache");
+    let cache_file_name = format!("cache_{}", args_signature);
+    let cache_file_path = &cache_dir.join(cache_file_name);
 
     let output_message: String =
         match io::cache::try_retrieve_cache(cache_file_path, &ttl_minutes, system_now) {
@@ -132,4 +137,20 @@ fn format(calculated_number: f64, no_format: bool) -> String {
 
 fn create_spinner() -> Option<Spinner> {
     Some(Spinner::new(spinners::Dots, "Retrieving...", Color::Blue))
+}
+
+fn generate_cache_filename(serialized_args: &str) -> String {
+    let mut hasher = XxHash64::default();
+
+    hasher.write(serialized_args.as_bytes());
+    let hashed = hasher.finish();
+
+    // Returns something like "7a2f4c91b0e3"
+    format!("{:x}", hashed)
+}
+
+fn create_args_signature(args: &Args) -> String {
+    let serialized = serde_json::to_string(args).unwrap();
+
+    generate_cache_filename(&serialized)
 }
