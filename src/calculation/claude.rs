@@ -1,6 +1,6 @@
-use crate::types::MessagesUsageReport;
-
 use crate::config::pricing_table::PRICING;
+
+use crate::io::claude_client::MessagesUsageReport;
 
 pub fn sum(body: MessagesUsageReport) -> f64 {
     body.data

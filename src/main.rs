@@ -3,14 +3,13 @@ extern crate dirs;
 mod calculation;
 mod config;
 mod io;
-mod types;
 
 use std::error::Error;
 
 use jiff::Zoned;
 use spinoff::{Color, Spinner, spinners};
 
-use types::MessagesUsageReport;
+use io::claude_client::MessagesUsageReport;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api

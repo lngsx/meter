@@ -1,4 +1,12 @@
-use crate::types::PricingTable;
+#![allow(dead_code)] // To silence the compiler warnings.
+
+#[derive(Debug)]
+pub struct PricingTable {
+    pub base_model_name: &'static str,
+    pub context_window: &'static str,
+    pub input_multiplier: f64,
+    pub output_multiplier: f64,
+}
 
 pub static PRICING: &[PricingTable] = &[
     PricingTable {

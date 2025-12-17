@@ -82,22 +82,3 @@ pub struct CacheCreationUsage {
     /// The number of input tokens used to create a 5-minute cache entry.
     pub ephemeral_5m_input_tokens: u64,
 }
-
-/// For processing.
-/// Delete later. Don't need it anymore.
-#[derive(Debug)]
-pub struct UsefulUsageReport {
-    pub uncached_input_tokens: u64,
-    pub cache_read_input_tokens: u64,
-    pub output_tokens: u64,
-}
-
-// Newer implementation.
-
-#[derive(Debug)]
-pub struct PricingTable {
-    pub base_model_name: &'static str,
-    pub context_window: &'static str,
-    pub input_multiplier: f64,
-    pub output_multiplier: f64,
-}
