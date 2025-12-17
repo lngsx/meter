@@ -1,4 +1,3 @@
-use std::env;
 use std::error::Error;
 
 use jiff::Zoned;
@@ -13,12 +12,12 @@ const BUCKET_WIDTH: &str = "1h";
 const USAGE_REPORT_ENDPOINT: &str =
     "https://api.anthropic.com/v1/organizations/usage_report/messages";
 
-pub fn fetch(zoned_now: &Zoned) -> Result<MessagesUsageReport, Box<dyn Error>> {
+pub fn fetch(zoned_now: &Zoned, key: &str) -> Result<MessagesUsageReport, Box<dyn Error>> {
     let starting_at = start_of_day(zoned_now)?;
 
     let request = ureq::get(USAGE_REPORT_ENDPOINT)
         .header("anthropic-version", API_VERSION)
-        .header("X-Api-Key", admin_key()?)
+        .header("X-Api-Key", key)
         // ranging, sizing.
         .query("starting_at", starting_at)
         // .query("starting_at", "2025-12-11T17:00:00Z")
@@ -50,9 +49,11 @@ fn start_of_day(zoned_now: &Zoned) -> Result<String, jiff::Error> {
     Ok(timestamp)
 }
 
+// Will later remove this.
+// It's now handle with clap. Thank you for your service.
 // Retriving environment variable.
-fn admin_key() -> Result<String, env::VarError> {
-    let key = env::var("ANTHROPIC_ADMIN_API_KEY")?;
-
-    Ok(key)
-}
+// fn admin_key() -> Result<String, env::VarError> {
+//     let key = env::var("ANTHROPIC_ADMIN_API_KEY")?;
+//
+//     Ok(key)
+// }

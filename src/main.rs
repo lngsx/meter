@@ -6,12 +6,46 @@ mod io;
 
 use std::error::Error;
 
+use clap::Parser;
 use jiff::Zoned;
 use spinoff::{Color, Spinner, spinners};
 
 use io::claude_client::MessagesUsageReport;
 
+#[derive(Parser, Debug)]
+#[command(name = "tad", version)]
+struct Args {
+    // Skip animations
+    #[arg(long, default_value_t = false)]
+    no_animate: bool,
+
+    /// Output raw JSON/Text
+    #[arg(long, short, default_value_t = false)]
+    raw: bool,
+
+    /// No format.
+    #[arg(long, short, default_value_t = false)]
+    no_format: bool,
+
+    /// Time to live in minutes for the session/cache.
+    #[arg(long, default_value_t = 1)]
+    ttl_minutes: i64,
+
+    // Credentials
+    /// Anthropic admin api key.
+    /// Defaults to ANTHROPIC_ADMIN_API_KEY env var.
+    #[arg(
+        long,
+        env = "ANTHROPIC_ADMIN_API_KEY",
+        hide_env_values = true,
+        required = true
+    )]
+    anthropic_admin_api_key: String,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let args = Args::parse();
+
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
     // By declaring an empty option beforehand, I can assign the spinner to it as needed.
@@ -25,7 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let system_now = &zoned_now.in_tz("UTC")?.timestamp();
 
     // I am going to make this an input argument in the future.
-    let ttl_minutes: i64 = 1;
+    let ttl_minutes: i64 = args.ttl_minutes;
 
     let cache_dir = dirs::cache_dir()
         .expect("Could not find a cache directory.")
@@ -42,13 +76,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // No cache, expired, or it doesn't exist, so it's okay to refresh.
             Ok(None) => {
-                spinner_container = create_spinner();
+                if !args.no_animate {
+                    spinner_container = create_spinner();
+                }
 
-                let body: MessagesUsageReport = io::claude_client::fetch(&zoned_now)?;
+                let body: MessagesUsageReport =
+                    io::claude_client::fetch(&zoned_now, &args.anthropic_admin_api_key)?;
 
                 let summed = calculation::claude::sum(body);
 
-                format(summed)
+                format(summed, args.no_format)
             }
 
             // This program must not be run without a cache.
@@ -85,7 +122,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 // private
 
-fn format(calculated_number: f64) -> String {
+fn format(calculated_number: f64, no_format: bool) -> String {
+    if no_format {
+        return calculated_number.to_string();
+    }
+
     format!("${:.2?}", calculated_number)
 }
 
