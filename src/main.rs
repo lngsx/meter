@@ -22,8 +22,8 @@ struct Args {
     #[arg(long, default_value_t = false)]
     no_animate: bool,
 
-    /// Output raw JSON/Text
-    #[arg(long, short, default_value_t = false)]
+    /// Output raw JSON/Text (not yet implemented).
+    #[arg(long, short, default_value_t = false, hide = true)]
     raw: bool,
 
     /// No format.
@@ -31,7 +31,8 @@ struct Args {
     no_format: bool,
 
     /// Time to live in minutes for the session/cache.
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(1..))]
+    #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
     ttl_minutes: i64,
 
     // Credentials
@@ -43,6 +44,7 @@ struct Args {
         hide_env_values = true,
         required = true
     )]
+    #[serde(skip)]
     anthropic_admin_api_key: String,
 }
 
@@ -150,7 +152,8 @@ fn generate_cache_filename(serialized_args: &str) -> String {
 }
 
 fn create_args_signature(args: &Args) -> String {
-    let serialized = serde_json::to_string(args).unwrap();
+    let serialized = serde_json::to_string(args)
+        .expect("Failed to serialize command arguments; debounce failed, operation rejected");
 
     generate_cache_filename(&serialized)
 }
