@@ -31,9 +31,17 @@ struct Args {
     no_format: bool,
 
     /// Time to live in minutes for the session/cache.
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(1..))]
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(0..))]
     #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
     ttl_minutes: i64,
+
+    /// Experimental grouping.
+    #[arg(long, default_value_t = false)]
+    group_exp: bool,
+
+    /// Experimental grouping.
+    #[arg(long, default_value_t = false)]
+    group_cal_exp: bool,
 
     // Credentials
     /// Anthropic admin api key.
@@ -90,9 +98,34 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let body: MessagesUsageReport =
                     io::claude_client::fetch(&zoned_now, &args.anthropic_admin_api_key)?;
 
-                let summed = calculation::claude::sum(body);
+                match args {
+                    // Try grouping.
+                    Args {
+                        group_exp: true, ..
+                    } => {
+                        let group = calculation::claude::group_by_model(body);
 
-                format(summed, args.no_format)
+                        // format!("{:#?}", group)
+                        //
+                        group
+                    }
+                    Args {
+                        group_cal_exp: true,
+                        ..
+                    } => {
+                        let group = calculation::claude::group_by_model_and_cal(body);
+
+                        // format!("{:#?}", group)
+                        //
+                        group
+                    }
+                    // Everything else.
+                    _ => {
+                        let summed = calculation::claude::sum(body.clone());
+
+                        format(summed, args.no_format)
+                    }
+                }
             }
 
             // This program must not be run without a cache.
