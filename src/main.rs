@@ -23,11 +23,11 @@ struct Args {
     no_animate: bool,
 
     /// Output raw JSON/Text (not yet implemented).
-    #[arg(long, short, default_value_t = false, hide = true)]
+    #[arg(long, default_value_t = false, hide = true)]
     raw: bool,
 
     /// No format.
-    #[arg(long, short, default_value_t = false)]
+    #[arg(long, default_value_t = false)]
     no_format: bool,
 
     /// Time to live in minutes for the session/cache.
@@ -37,11 +37,11 @@ struct Args {
 
     /// Experimental grouping.
     #[arg(long, default_value_t = false)]
-    group_exp: bool,
+    tokens_by_model: bool,
 
     /// Experimental grouping.
     #[arg(long, default_value_t = false)]
-    group_cal_exp: bool,
+    costs_by_model: bool,
 
     // Credentials
     /// Anthropic admin api key.
@@ -101,27 +101,20 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match args {
                     // Try grouping.
                     Args {
-                        group_exp: true, ..
-                    } => {
-                        let group = calculation::claude::group_by_model(body);
-
-                        // format!("{:#?}", group)
-                        //
-                        group
-                    }
-                    Args {
-                        group_cal_exp: true,
+                        tokens_by_model: true,
                         ..
                     } => {
-                        let group = calculation::claude::group_by_model_and_cal(body);
-
-                        // format!("{:#?}", group)
-                        //
-                        group
+                        calculation::claude::tokens_by_model_as_csv(body)
+                    }
+                    Args {
+                        costs_by_model: true,
+                        ..
+                    } => {
+                        calculation::claude::costs_by_model_as_csv(body)
                     }
                     // Everything else.
                     _ => {
-                        let summed = calculation::claude::sum(body.clone());
+                        let summed = calculation::claude::calculate_total_cost(body.clone());
 
                         format(summed, args.no_format)
                     }
