@@ -6,7 +6,7 @@ mod io;
 
 use std::error::Error;
 
-use clap::Parser;
+use clap::{ArgGroup, Parser, ValueEnum};
 use jiff::Zoned;
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
@@ -15,8 +15,19 @@ use twox_hash::XxHash64;
 
 use io::claude_client::MessagesUsageReport;
 
+#[derive(Clone, Debug, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+enum Provider {
+    Anthropic,
+}
+
 #[derive(Parser, Serialize, Debug)]
 #[command(name = "tad", version)]
+#[command(group(
+    ArgGroup::new("mode")
+        .required(false)
+        .args(["tokens_by_model", "costs_by_model", "costs_all"])
+))]
 struct Args {
     // Skip animations
     #[arg(long, default_value_t = false)]
@@ -31,21 +42,23 @@ struct Args {
     no_format: bool,
 
     /// Time to live in minutes for the session/cache.
+    /// Thinking about renaming it to debouncing window or something.
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(0..))]
     #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
     ttl_minutes: i64,
 
     /// Experimental grouping.
-    #[arg(long, default_value_t = false)]
+    #[arg(long, group = "mode")]
     tokens_by_model: bool,
 
     /// Experimental grouping.
-    #[arg(long, default_value_t = false)]
+    #[arg(long, group = "mode")]
     costs_by_model: bool,
 
-    // Credentials
-    /// Anthropic admin api key.
-    /// Defaults to ANTHROPIC_ADMIN_API_KEY env var.
+    /// Default mode.
+    #[arg(long, group = "mode")]
+    costs_all: bool,
+
     #[arg(
         long,
         env = "ANTHROPIC_ADMIN_API_KEY",
@@ -54,6 +67,10 @@ struct Args {
     )]
     #[serde(skip)]
     anthropic_admin_api_key: String,
+
+    /// Provider to use. Currently only supports 'anthropic'.
+    #[arg(long, value_delimiter = ',', default_value = "anthropic")]
+    provider: Vec<Provider>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -103,16 +120,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                     Args {
                         tokens_by_model: true,
                         ..
-                    } => {
-                        calculation::claude::tokens_by_model_as_csv(body)
-                    }
+                    } => calculation::claude::tokens_by_model_as_csv(body),
                     Args {
                         costs_by_model: true,
                         ..
-                    } => {
-                        calculation::claude::costs_by_model_as_csv(body)
-                    }
-                    // Everything else.
+                    } => calculation::claude::costs_by_model_as_csv(body),
                     _ => {
                         let summed = calculation::claude::calculate_total_cost(body.clone());
 
