@@ -15,89 +15,6 @@ use twox_hash::XxHash64;
 
 use io::claude_client::MessagesUsageReport;
 
-#[derive(Clone, Debug, Serialize, ValueEnum)]
-#[serde(rename_all = "kebab-case")]
-enum Provider {
-    Anthropic,
-}
-
-#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
-#[serde(rename_all = "kebab-case")]
-enum Metric {
-    #[default]
-    Cost,
-    Tokens,
-}
-
-#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
-#[serde(rename_all = "kebab-case")]
-enum Grouping {
-    #[default]
-    Model,
-    // Provider, // No, for now.
-}
-
-#[derive(Parser, Serialize, Debug)]
-#[command(name = "tad", version)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-
-    //
-    // Global args start here..
-    //
-
-    //
-    /// Skip animations
-    #[arg(long, default_value_t = false)]
-    #[serde(skip)] // This is cosmetic.
-    no_animate: bool,
-
-    /// No format.
-    #[arg(long, default_value_t = false)]
-    unformatted: bool,
-
-    /// Time to live in minutes for the session/cache.
-    /// Thinking about renaming it to debouncing window or something.
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(0..))]
-    #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
-    ttl_minutes: i64,
-
-    #[arg(
-        long,
-        env = "ANTHROPIC_ADMIN_API_KEY",
-        hide_env_values = true,
-        required = true
-    )]
-    anthropic_admin_api_key: String,
-    // #[serde(skip)]
-    // Decided to include this key in the command signature itself to ensure integrity
-    // if the user has multiple keys on the same machine.
-    /// Provider to use. Currently only supports 'anthropic'.
-    #[arg(long, value_delimiter = ',', default_value = "anthropic")]
-    provider: Vec<Provider>,
-}
-
-#[derive(Subcommand, Debug, Serialize)]
-enum Commands {
-    /// meter sum
-    Sum(SumArgs),
-
-    /// meter raw
-    Raw,
-}
-
-#[derive(clap::Args, Debug, Serialize)]
-struct SumArgs {
-    /// What to measure.
-    #[arg(long, default_value = "cost")]
-    metric: Metric,
-
-    /// Optional. How to group results.
-    #[arg(long)]
-    group_by: Option<Grouping>,
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     let args_signature = create_args_signature(&cli);
@@ -241,3 +158,89 @@ fn create_args_signature(cli: &Cli) -> String {
 
     generate_cache_filename(&serialized)
 }
+
+// Structs
+
+#[derive(Clone, Debug, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+enum Provider {
+    Anthropic,
+}
+
+#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+enum Metric {
+    #[default]
+    Cost,
+    Tokens,
+}
+
+#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+enum Grouping {
+    #[default]
+    Model,
+    // Provider, // No, for now.
+}
+
+#[derive(Parser, Serialize, Debug)]
+#[command(name = "tad", version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+
+    //
+    // Global args start here..
+    //
+
+    //
+    /// Skip animations
+    #[arg(long, default_value_t = false)]
+    #[serde(skip)] // This is cosmetic.
+    no_animate: bool,
+
+    /// No format.
+    #[arg(long, default_value_t = false)]
+    unformatted: bool,
+
+    /// Time to live in minutes for the session/cache.
+    /// Thinking about renaming it to debouncing window or something.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(0..))]
+    #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
+    ttl_minutes: i64,
+
+    #[arg(
+        long,
+        env = "ANTHROPIC_ADMIN_API_KEY",
+        hide_env_values = true,
+        required = true
+    )]
+    anthropic_admin_api_key: String,
+    // #[serde(skip)]
+    // Decided to include this key in the command signature itself to ensure integrity
+    // if the user has multiple keys on the same machine.
+    /// Provider to use. Currently only supports 'anthropic'.
+    #[arg(long, value_delimiter = ',', default_value = "anthropic")]
+    provider: Vec<Provider>,
+}
+
+#[derive(Subcommand, Debug, Serialize)]
+enum Commands {
+    /// meter sum
+    Sum(SumArgs),
+
+    /// meter raw
+    Raw,
+}
+
+#[derive(clap::Args, Debug, Serialize)]
+struct SumArgs {
+    /// What to measure.
+    #[arg(long, default_value = "cost")]
+    metric: Metric,
+
+    /// Optional. How to group results.
+    #[arg(long)]
+    group_by: Option<Grouping>,
+}
+
