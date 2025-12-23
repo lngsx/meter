@@ -58,17 +58,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                     spinner_container = create_spinner();
                 }
 
-                match cli.command {
+                match &cli.command {
                     // meter raw.
                     Commands::Raw => {
-                        io::claude_client::fetch_raw(&zoned_now, &cli.anthropic_admin_api_key)?
+                        io::claude_client::fetch_raw(&zoned_now, cli.try_get_anthropic_key()?)?
                     }
 
                     // meter sum.
                     Commands::Sum(args) => {
                         // Everyone uses the same body.
                         let body: MessagesUsageReport =
-                            io::claude_client::fetch(&zoned_now, &cli.anthropic_admin_api_key)?;
+                            io::claude_client::fetch(&zoned_now, cli.try_get_anthropic_key()?)?;
 
                         match args {
                             SumArgs {
@@ -163,29 +163,18 @@ fn create_args_signature(cli: &Cli) -> String {
     generate_cache_filename(&serialized)
 }
 
+impl Cli {
+    // A poor's man solution for a credentials store.
+    // I will later come back to it to improve if I add more providers.
+    // Just platforming it now so I can understand the big picture easily in the future.
+    fn try_get_anthropic_key(&self) -> Result<&String, String> {
+        self.anthropic_admin_api_key
+            .as_ref()
+            .ok_or_else(|| "Anthropic API key not found.".into())
+    }
+}
+
 // Structs
-
-#[derive(Clone, Debug, Serialize, ValueEnum)]
-#[serde(rename_all = "kebab-case")]
-enum Provider {
-    Anthropic,
-}
-
-#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
-#[serde(rename_all = "kebab-case")]
-enum Metric {
-    #[default]
-    Cost,
-    Tokens,
-}
-
-#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
-#[serde(rename_all = "kebab-case")]
-enum Grouping {
-    #[default]
-    Model,
-    // Provider, // No, for now.
-}
 
 #[derive(Parser, Serialize, Debug)]
 #[command(name = "tad", version)]
@@ -199,17 +188,17 @@ struct Cli {
 
     //
     /// Skip animations
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, global = true)]
     #[serde(skip)] // This is cosmetic.
     no_animate: bool,
 
     /// No format.
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, global = true)]
     unformatted: bool,
 
     /// Time to live in minutes for the session/cache.
     /// Thinking about renaming it to debouncing window or something.
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(0..))]
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(0..), global = true)]
     #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
     ttl_minutes: i64,
 
@@ -217,14 +206,20 @@ struct Cli {
         long,
         env = "ANTHROPIC_ADMIN_API_KEY",
         hide_env_values = true,
-        required = true
+        global = true
     )]
-    anthropic_admin_api_key: String,
+    anthropic_admin_api_key: Option<String>, // This is the way to make it optional.
+
     // #[serde(skip)]
     // Decided to include this key in the command signature itself to ensure integrity
     // if the user has multiple keys on the same machine.
     /// Provider to use. Currently only supports 'anthropic'.
-    #[arg(long, value_delimiter = ',', default_value = "anthropic")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "anthropic",
+        global = true
+    )]
     provider: Vec<Provider>,
 }
 
@@ -248,3 +243,24 @@ struct SumArgs {
     group_by: Option<Grouping>,
 }
 
+#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+enum Metric {
+    #[default]
+    Cost,
+    Tokens,
+}
+
+#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+enum Grouping {
+    #[default]
+    Model,
+    // Provider, // No, for now.
+}
+
+#[derive(Clone, Debug, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+enum Provider {
+    Anthropic,
+}
