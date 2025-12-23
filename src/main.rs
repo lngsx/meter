@@ -11,6 +11,7 @@ use jiff::Zoned;
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
 use std::hash::Hasher;
+use std::io::IsTerminal;
 use twox_hash::XxHash64;
 
 use io::claude_client::MessagesUsageReport;
@@ -50,7 +51,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // No cache, expired, or it doesn't exist, so it's okay to refresh.
             Ok(None) => {
-                if !cli.no_animate {
+                // Improve ergonomics by auto detecting terminals.
+                // This prevents the fancy spinner from flooding pipes or breaking tmux status bars.
+                // This saves users from having to mandatory, constantly append `--no-animate`.
+                if !cli.no_animate && std::io::stdout().is_terminal() {
                     spinner_container = create_spinner();
                 }
 
