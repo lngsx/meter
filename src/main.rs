@@ -6,7 +6,7 @@ mod io;
 
 use std::error::Error;
 
-use clap::{ArgGroup, Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use jiff::Zoned;
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
@@ -21,25 +21,41 @@ enum Provider {
     Anthropic,
 }
 
+#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+enum Metric {
+    #[default]
+    Cost,
+    Tokens,
+}
+
+#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+enum Grouping {
+    #[default]
+    Model,
+    // Provider, // No, for now.
+}
+
 #[derive(Parser, Serialize, Debug)]
 #[command(name = "tad", version)]
-#[command(group(
-    ArgGroup::new("mode")
-        .required(false)
-        .args(["tokens_by_model", "costs_by_model", "costs_all"])
-))]
-struct Args {
-    // Skip animations
-    #[arg(long, default_value_t = false)]
-    no_animate: bool,
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
 
-    /// Output raw JSON/Text (not yet implemented).
-    #[arg(long, default_value_t = false, hide = true)]
-    raw: bool,
+    //
+    // Global args start here..
+    //
+
+    //
+    /// Skip animations
+    #[arg(long, default_value_t = false)]
+    #[serde(skip)] // This is cosmetic.
+    no_animate: bool,
 
     /// No format.
     #[arg(long, default_value_t = false)]
-    no_format: bool,
+    unformatted: bool,
 
     /// Time to live in minutes for the session/cache.
     /// Thinking about renaming it to debouncing window or something.
@@ -47,35 +63,44 @@ struct Args {
     #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
     ttl_minutes: i64,
 
-    /// Experimental grouping.
-    #[arg(long, group = "mode")]
-    tokens_by_model: bool,
-
-    /// Experimental grouping.
-    #[arg(long, group = "mode")]
-    costs_by_model: bool,
-
-    /// Default mode.
-    #[arg(long, group = "mode")]
-    costs_all: bool,
-
     #[arg(
         long,
         env = "ANTHROPIC_ADMIN_API_KEY",
         hide_env_values = true,
         required = true
     )]
-    #[serde(skip)]
     anthropic_admin_api_key: String,
-
+    // #[serde(skip)]
+    // Decided to include this key in the command signature itself to ensure integrity
+    // if the user has multiple keys on the same machine.
     /// Provider to use. Currently only supports 'anthropic'.
     #[arg(long, value_delimiter = ',', default_value = "anthropic")]
     provider: Vec<Provider>,
 }
 
+#[derive(Subcommand, Debug, Serialize)]
+enum Commands {
+    /// meter sum
+    Sum(SumArgs),
+
+    /// meter raw
+    Raw,
+}
+
+#[derive(clap::Args, Debug, Serialize)]
+struct SumArgs {
+    /// What to measure.
+    #[arg(long, default_value = "cost")]
+    metric: Metric,
+
+    /// Optional. How to group results.
+    #[arg(long)]
+    group_by: Option<Grouping>,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
-    let args_signature = create_args_signature(&args);
+    let cli = Cli::parse();
+    let args_signature = create_args_signature(&cli);
 
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
@@ -90,7 +115,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let system_now = &zoned_now.in_tz("UTC")?.timestamp();
 
     // I am going to make this an input argument in the future.
-    let ttl_minutes: i64 = args.ttl_minutes;
+    let ttl_minutes: i64 = cli.ttl_minutes;
 
     let cache_dir = dirs::cache_dir()
         .expect("Could not find a cache directory.")
@@ -108,27 +133,48 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // No cache, expired, or it doesn't exist, so it's okay to refresh.
             Ok(None) => {
-                if !args.no_animate {
+                if !cli.no_animate {
                     spinner_container = create_spinner();
                 }
 
-                let body: MessagesUsageReport =
-                    io::claude_client::fetch(&zoned_now, &args.anthropic_admin_api_key)?;
+                match cli.command {
+                    // meter raw.
+                    Commands::Raw => {
+                        io::claude_client::fetch_raw(&zoned_now, &cli.anthropic_admin_api_key)?
+                    }
 
-                match args {
-                    // Try grouping.
-                    Args {
-                        tokens_by_model: true,
-                        ..
-                    } => calculation::claude::tokens_by_model_as_csv(body),
-                    Args {
-                        costs_by_model: true,
-                        ..
-                    } => calculation::claude::costs_by_model_as_csv(body),
-                    _ => {
-                        let summed = calculation::claude::calculate_total_cost(body.clone());
+                    // meter sum.
+                    Commands::Sum(args) => {
+                        // Everyone uses the same body.
+                        let body: MessagesUsageReport =
+                            io::claude_client::fetch(&zoned_now, &cli.anthropic_admin_api_key)?;
 
-                        format(summed, args.no_format)
+                        match args {
+                            SumArgs {
+                                metric: Metric::Cost,
+                                group_by: None,
+                                ..
+                            } => {
+                                let summed = calculation::claude::calculate_total_cost(body);
+
+                                format(summed, cli.unformatted)
+                            }
+
+                            SumArgs {
+                                metric: Metric::Cost,
+                                group_by: Some(Grouping::Model),
+                            } => calculation::claude::costs_by_model_as_csv(body),
+
+                            SumArgs {
+                                metric: Metric::Tokens,
+                                group_by: Some(Grouping::Model),
+                            } => calculation::claude::tokens_by_model_as_csv(body),
+
+                            SumArgs {
+                                metric: Metric::Tokens,
+                                group_by: None,
+                            } => calculation::claude::sum_total_tokens(body).to_string(),
+                        }
                     }
                 }
             }
@@ -172,7 +218,7 @@ fn format(calculated_number: f64, no_format: bool) -> String {
         return calculated_number.to_string();
     }
 
-    format!("${:.2?}", calculated_number)
+    format!("${:.2}", calculated_number)
 }
 
 fn create_spinner() -> Option<Spinner> {
@@ -189,8 +235,8 @@ fn generate_cache_filename(serialized_args: &str) -> String {
     format!("{:x}", hashed)
 }
 
-fn create_args_signature(args: &Args) -> String {
-    let serialized = serde_json::to_string(args)
+fn create_args_signature(cli: &Cli) -> String {
+    let serialized = serde_json::to_string(cli)
         .expect("Failed to serialize command arguments; debounce failed, operation rejected");
 
     generate_cache_filename(&serialized)

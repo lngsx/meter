@@ -36,6 +36,27 @@ pub fn fetch(zoned_now: &Zoned, key: &str) -> Result<MessagesUsageReport, Box<dy
     Ok(report)
 }
 
+/// Fetch then does nothing to the response, returns it right away.
+pub fn fetch_raw(zoned_now: &Zoned, key: &str) -> Result<String, Box<dyn Error>> {
+    let starting_at = start_of_day(zoned_now)?;
+
+    let request = ureq::get(USAGE_REPORT_ENDPOINT)
+        .header("anthropic-version", API_VERSION)
+        .header("X-Api-Key", key)
+        // ranging, sizing.
+        .query("starting_at", starting_at)
+        .query("bucket_width", BUCKET_WIDTH)
+        // grouping.
+        .query("group_by[]", "model")
+        .query("group_by[]", "context_window")
+        .query("group_by[]", "workspace_id")
+        .query("group_by[]", "api_key_id");
+
+    let response = request.call()?.body_mut().read_to_string()?;
+
+    Ok(response)
+}
+
 // private
 
 // Compose timestring.

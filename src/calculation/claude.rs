@@ -28,6 +28,20 @@ pub fn calculate_total_cost(body: MessagesUsageReport) -> f64 {
         })
 }
 
+pub fn sum_total_tokens(body: MessagesUsageReport) -> u64 {
+    body.data
+        .iter()
+        .flat_map(|bucket| &bucket.results) // pluck it.
+        .fold(0, |acc, result_entry| {
+            let total_input_tokens =
+                result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
+
+            let total_output_tokens = result_entry.output_tokens;
+
+            total_input_tokens + total_output_tokens + acc
+        })
+}
+
 pub fn tokens_by_model_as_csv(body: MessagesUsageReport) -> String {
     let grouped_tokens = body
         .data
