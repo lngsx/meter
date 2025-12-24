@@ -66,9 +66,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     // meter sum.
                     Commands::Sum(args) => {
+                        let days_ago = 0;
+                        let time_span = jiff::Span::new().days(days_ago);
+
+                        let report_start = zoned_now.checked_sub(time_span)?.start_of_day()?;
+
                         // Everyone uses the same body.
                         let body: MessagesUsageReport =
-                            io::claude_client::fetch(&zoned_now, cli.try_get_anthropic_key()?)?;
+                            io::claude_client::fetch(&report_start, cli.try_get_anthropic_key()?)?;
 
                         match args {
                             SumArgs {
