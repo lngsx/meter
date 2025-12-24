@@ -7,7 +7,7 @@ mod io;
 use std::error::Error;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use jiff::Zoned;
+use jiff::{Zoned, Span};
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
 use std::hash::Hasher;
@@ -66,10 +66,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     // meter sum.
                     Commands::Sum(args) => {
-                        let days_ago = 0;
-                        let time_span = jiff::Span::new().days(days_ago);
-
-                        let report_start = zoned_now.checked_sub(time_span)?.start_of_day()?;
+                        let days_ago = cli.try_parse_since()? as i64;
+                        let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
                         // Everyone uses the same body.
                         let body: MessagesUsageReport =
@@ -168,14 +166,40 @@ fn create_args_signature(cli: &Cli) -> String {
     generate_cache_filename(&serialized)
 }
 
+fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> Result<Zoned, Box<dyn Error>> {
+    let time_span = Span::new().days(days_ago);
+
+    Ok(zoned_now.checked_sub(time_span)?.start_of_day()?)
+}
+
 impl Cli {
-    // A poor's man solution for a credentials store.
+    // A poor man's solution for a credentials store.
     // I will later come back to it to improve if I add more providers.
     // Just platforming it now so I can understand the big picture easily in the future.
     fn try_get_anthropic_key(&self) -> Result<&String, String> {
         self.anthropic_admin_api_key
             .as_ref()
             .ok_or_else(|| "Anthropic API key not found.".into())
+    }
+
+    /// An another poor man's solution to the compact date range string parser.
+    /// Return a number of day user put in.
+    /// Only support day unit for now.
+    fn try_parse_since(&self) -> Result<u64, String> {
+        // let since = self.since.as_deref().unwrap_or("0d");
+        // let since = self.since;
+
+        let days_ago = match self.since.strip_suffix('d') {
+            Some(day) => {
+                day.parse::<u64>().map_err(|_| "Invalid number format.")?
+            }
+
+            None => {
+                return Err("Currently only 'd' suffix (e.g., '1d') is supported.".into());
+            }
+        };
+
+        Ok(days_ago)
     }
 }
 
@@ -206,6 +230,10 @@ struct Cli {
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(0..), global = true)]
     #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
     ttl_minutes: i64,
+
+    /// Only support day for now, for example '2d'.
+    #[arg(long, default_value = "0d", global = true)]
+    since: String,
 
     #[arg(
         long,
