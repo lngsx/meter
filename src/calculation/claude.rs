@@ -60,7 +60,7 @@ pub fn tokens_by_model_as_csv(body: MessagesUsageReport) -> String {
     grouped_to_csv(grouped_tokens)
 }
 
-pub fn costs_by_model_as_csv(body: MessagesUsageReport) -> String {
+pub fn costs_by_model_as_csv(body: MessagesUsageReport, unformatted: bool) -> String {
     let grouped_costs = body
         .data
         .into_iter()
@@ -87,7 +87,25 @@ pub fn costs_by_model_as_csv(body: MessagesUsageReport) -> String {
 
     let formatted_costs: HashMap<String, String> = grouped_costs
         .into_iter()
-        .map(|(name, total)| (name.to_string(), format!("${:.2}", total)))
+        .map(|(name, total)| {
+            // Format the total to 2 decimal places (for example, 1.2345 to 1.23)
+            let formatted_total = format!("{:.2}", total);
+
+            // When formatting is enabled, include the cost in the name.
+            // example: "model-name-123 ($1.23)"
+            //
+            // This works well for piping to tools like uplot:
+            // - The display string is in the left cell.
+            // - The numeric value is in the right cell for sorting, for example, | sort --xx |
+            //   since dollar-prefixed numbers can't be sorted programmartically.
+            let display_string = match unformatted {
+                true => name,
+                false => format!("{} (${})", name, formatted_total),
+            };
+
+            // Left cell, right cell.
+            (display_string, formatted_total)
+        })
         .collect();
 
     grouped_to_csv(formatted_costs)

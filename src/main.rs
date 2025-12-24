@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             SumArgs {
                                 metric: Metric::Cost,
                                 group_by: Some(Grouping::Model),
-                            } => calculation::claude::costs_by_model_as_csv(body),
+                            } => calculation::claude::costs_by_model_as_csv(body, cli.unformatted),
 
                             SumArgs {
                                 metric: Metric::Tokens,
