@@ -6,51 +6,19 @@ mod io;
 
 use std::error::Error;
 
-use clap::Parser;
+use clap::{Parser, Subcommand, ValueEnum};
 use jiff::Zoned;
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
 use std::hash::Hasher;
+use std::io::IsTerminal;
 use twox_hash::XxHash64;
 
 use io::claude_client::MessagesUsageReport;
 
-#[derive(Parser, Serialize, Debug)]
-#[command(name = "tad", version)]
-struct Args {
-    // Skip animations
-    #[arg(long, default_value_t = false)]
-    no_animate: bool,
-
-    /// Output raw JSON/Text (not yet implemented).
-    #[arg(long, short, default_value_t = false, hide = true)]
-    raw: bool,
-
-    /// No format.
-    #[arg(long, short, default_value_t = false)]
-    no_format: bool,
-
-    /// Time to live in minutes for the session/cache.
-    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(1..))]
-    #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
-    ttl_minutes: i64,
-
-    // Credentials
-    /// Anthropic admin api key.
-    /// Defaults to ANTHROPIC_ADMIN_API_KEY env var.
-    #[arg(
-        long,
-        env = "ANTHROPIC_ADMIN_API_KEY",
-        hide_env_values = true,
-        required = true
-    )]
-    #[serde(skip)]
-    anthropic_admin_api_key: String,
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
-    let args_signature = create_args_signature(&args);
+    let cli = Cli::parse();
+    let args_signature = create_args_signature(&cli);
 
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
@@ -65,7 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let system_now = &zoned_now.in_tz("UTC")?.timestamp();
 
     // I am going to make this an input argument in the future.
-    let ttl_minutes: i64 = args.ttl_minutes;
+    let ttl_minutes: i64 = cli.ttl_minutes;
 
     let cache_dir = dirs::cache_dir()
         .expect("Could not find a cache directory.")
@@ -83,16 +51,53 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // No cache, expired, or it doesn't exist, so it's okay to refresh.
             Ok(None) => {
-                if !args.no_animate {
+                // Improve ergonomics by auto detecting terminals.
+                // This prevents the fancy spinner from flooding pipes or breaking tmux status bars.
+                // This saves users from having to mandatory, constantly append `--no-animate`.
+                if !cli.no_animate && std::io::stdout().is_terminal() {
                     spinner_container = create_spinner();
                 }
 
-                let body: MessagesUsageReport =
-                    io::claude_client::fetch(&zoned_now, &args.anthropic_admin_api_key)?;
+                match &cli.command {
+                    // meter raw.
+                    Commands::Raw => {
+                        io::claude_client::fetch_raw(&zoned_now, cli.try_get_anthropic_key()?)?
+                    }
 
-                let summed = calculation::claude::sum(body);
+                    // meter sum.
+                    Commands::Sum(args) => {
+                        // Everyone uses the same body.
+                        let body: MessagesUsageReport =
+                            io::claude_client::fetch(&zoned_now, cli.try_get_anthropic_key()?)?;
 
-                format(summed, args.no_format)
+                        match args {
+                            SumArgs {
+                                metric: Metric::Cost,
+                                group_by: None,
+                                ..
+                            } => {
+                                let summed = calculation::claude::calculate_total_cost(body);
+
+                                format(summed, cli.unformatted)
+                            }
+
+                            SumArgs {
+                                metric: Metric::Cost,
+                                group_by: Some(Grouping::Model),
+                            } => calculation::claude::costs_by_model_as_csv(body, cli.unformatted),
+
+                            SumArgs {
+                                metric: Metric::Tokens,
+                                group_by: Some(Grouping::Model),
+                            } => calculation::claude::tokens_by_model_as_csv(body),
+
+                            SumArgs {
+                                metric: Metric::Tokens,
+                                group_by: None,
+                            } => calculation::claude::sum_total_tokens(body).to_string(),
+                        }
+                    }
+                }
             }
 
             // This program must not be run without a cache.
@@ -134,7 +139,7 @@ fn format(calculated_number: f64, no_format: bool) -> String {
         return calculated_number.to_string();
     }
 
-    format!("${:.2?}", calculated_number)
+    format!("${:.2}", calculated_number)
 }
 
 fn create_spinner() -> Option<Spinner> {
@@ -151,9 +156,111 @@ fn generate_cache_filename(serialized_args: &str) -> String {
     format!("{:x}", hashed)
 }
 
-fn create_args_signature(args: &Args) -> String {
-    let serialized = serde_json::to_string(args)
+fn create_args_signature(cli: &Cli) -> String {
+    let serialized = serde_json::to_string(cli)
         .expect("Failed to serialize command arguments; debounce failed, operation rejected");
 
     generate_cache_filename(&serialized)
+}
+
+impl Cli {
+    // A poor's man solution for a credentials store.
+    // I will later come back to it to improve if I add more providers.
+    // Just platforming it now so I can understand the big picture easily in the future.
+    fn try_get_anthropic_key(&self) -> Result<&String, String> {
+        self.anthropic_admin_api_key
+            .as_ref()
+            .ok_or_else(|| "Anthropic API key not found.".into())
+    }
+}
+
+// Structs
+
+#[derive(Parser, Serialize, Debug)]
+#[command(name = "tad", version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+
+    //
+    // Global args start here..
+    //
+
+    //
+    /// Skip animations
+    #[arg(long, default_value_t = false, global = true)]
+    #[serde(skip)] // This is cosmetic.
+    no_animate: bool,
+
+    /// No format.
+    #[arg(long, default_value_t = false, global = true)]
+    unformatted: bool,
+
+    /// Time to live in minutes for the session/cache.
+    /// Thinking about renaming it to debouncing window or something.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i64).range(0..), global = true)]
+    #[serde(skip)] // ttl is just for querying the cache, so keep it away from the cache key.
+    ttl_minutes: i64,
+
+    #[arg(
+        long,
+        env = "ANTHROPIC_ADMIN_API_KEY",
+        hide_env_values = true,
+        global = true
+    )]
+    anthropic_admin_api_key: Option<String>, // This is the way to make it optional.
+
+    // #[serde(skip)]
+    // Decided to include this key in the command signature itself to ensure integrity
+    // if the user has multiple keys on the same machine.
+    /// Provider to use. Currently only supports 'anthropic'.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "anthropic",
+        global = true
+    )]
+    provider: Vec<Provider>,
+}
+
+#[derive(Subcommand, Debug, Serialize)]
+enum Commands {
+    /// meter sum
+    Sum(SumArgs),
+
+    /// meter raw
+    Raw,
+}
+
+#[derive(clap::Args, Debug, Serialize)]
+struct SumArgs {
+    /// What to measure.
+    #[arg(long, default_value = "cost")]
+    metric: Metric,
+
+    /// Optional. How to group results.
+    #[arg(long)]
+    group_by: Option<Grouping>,
+}
+
+#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+enum Metric {
+    #[default]
+    Cost,
+    Tokens,
+}
+
+#[derive(Serialize, ValueEnum, Clone, Debug, Default)]
+#[serde(rename_all = "kebab-case")]
+enum Grouping {
+    #[default]
+    Model,
+    // Provider, // No, for now.
+}
+
+#[derive(Clone, Debug, Serialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+enum Provider {
+    Anthropic,
 }
