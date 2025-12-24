@@ -177,7 +177,7 @@ impl Cli {
 // Structs
 
 #[derive(Parser, Serialize, Debug)]
-#[command(name = "tad", version)]
+#[command(name = "meter", version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
