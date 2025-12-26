@@ -102,29 +102,6 @@ fn inner_fetch(
     Ok(body)
 }
 
-/// Fetch then does nothing to the response, returns it right away.
-pub fn fetch_raw(key: &str, starting_at: &Zoned) -> Result<String, Box<dyn Error>> {
-    // let starting_at = start_of_day(zoned_now)?;
-
-    let starting_at_timestamp = starting_at.timestamp().to_string();
-
-    let request = ureq::get(USAGE_REPORT_ENDPOINT)
-        .header("anthropic-version", API_VERSION)
-        .header("X-Api-Key", key)
-        // ranging, sizing.
-        .query("starting_at", starting_at_timestamp)
-        .query("bucket_width", BUCKET_WIDTH)
-        // grouping.
-        .query("group_by[]", "model")
-        .query("group_by[]", "context_window")
-        .query("group_by[]", "workspace_id")
-        .query("group_by[]", "api_key_id");
-
-    let response = request.call()?.body_mut().read_to_string()?;
-
-    Ok(response)
-}
-
 /// Keep ourselves safe. We can wait.
 fn wait() {
     let duration = std::time::Duration::from_secs(GAP_TIME_BETWEEN_FETCH_IN_SEC);
@@ -139,3 +116,28 @@ fn wait() {
 fn progress_text(page_number: usize) -> String {
     format!("Retrieving{}", ".".repeat(page_number))
 }
+
+// Junkyard.
+
+// No more of this, but I prefer to keep it until I am certain this design is okay.
+// pub fn fetch_raw(key: &str, starting_at: &Zoned) -> Result<String, Box<dyn Error>> {
+//     // let starting_at = start_of_day(zoned_now)?;
+//
+//     let starting_at_timestamp = starting_at.timestamp().to_string();
+//
+//     let request = ureq::get(USAGE_REPORT_ENDPOINT)
+//         .header("anthropic-version", API_VERSION)
+//         .header("X-Api-Key", key)
+//         // ranging, sizing.
+//         .query("starting_at", starting_at_timestamp)
+//         .query("bucket_width", BUCKET_WIDTH)
+//         // grouping.
+//         .query("group_by[]", "model")
+//         .query("group_by[]", "context_window")
+//         .query("group_by[]", "workspace_id")
+//         .query("group_by[]", "api_key_id");
+//
+//     let response = request.call()?.body_mut().read_to_string()?;
+//
+//     Ok(response)
+// }

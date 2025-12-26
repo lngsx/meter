@@ -58,25 +58,32 @@ fn main() -> Result<(), Box<dyn Error>> {
                     spinner_container = create_spinner();
                 }
 
+                let days_ago = cli.try_parse_since()? as i64;
+                let report_start = calculate_start_date(&zoned_now, days_ago)?;
+
+                // Everyone uses the same usages.
+                let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
+                    cli.try_get_anthropic_key()?,
+                    &report_start,
+                    None,
+                    &mut spinner_container,
+                )?;
+
                 match &cli.command {
                     // meter raw.
                     Commands::Raw => {
-                        io::claude_client::fetch_raw(cli.try_get_anthropic_key()?, &zoned_now)?
+                        // Keep this for now until I am sure this design is okay.
+                        // io::claude_client::fetch_raw(cli.try_get_anthropic_key()?, &zoned_now)?
+
+                        if cli.unformatted {
+                            serde_json::to_string(&usages)?
+                        } else {
+                            serde_json::to_string_pretty(&usages)?
+                        }
                     }
 
                     // meter sum.
                     Commands::Sum(args) => {
-                        let days_ago = cli.try_parse_since()? as i64;
-                        let report_start = calculate_start_date(&zoned_now, days_ago)?;
-
-                        // Everyone uses the same usages.
-                        let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
-                            cli.try_get_anthropic_key()?,
-                            &report_start,
-                            None,
-                            &mut spinner_container,
-                        )?;
-
                         match args {
                             SumArgs {
                                 metric: Metric::Cost,
@@ -262,10 +269,15 @@ struct Cli {
 
 #[derive(Subcommand, Debug, Serialize)]
 enum Commands {
-    /// meter sum
+    /// Calculate aggregated usage (cost, tokens).
     Sum(SumArgs),
 
-    /// meter raw
+    /// Retrieve the raw, unaggregated usage data as JSON.
+    ///
+    /// This outputs the full history of usage buckets. Useful for piping into 
+    /// tools like `jq` or for building custom analysis scripts.
+    ///
+    /// Go build something fun on top of this!
     Raw,
 }
 
