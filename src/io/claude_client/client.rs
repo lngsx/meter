@@ -2,6 +2,8 @@ use std::error::Error;
 
 use jiff::Zoned;
 
+use spinoff::Spinner;
+
 use super::dtos::{MessagesUsageReport, UsageDataBucket};
 
 const API_VERSION: &str = "2023-06-01";
@@ -15,6 +17,7 @@ pub fn fetch(
     key: &str,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
+    spinner_container: &mut Option<Spinner>,
 ) -> Result<Vec<UsageDataBucket>, Box<dyn Error>> {
     // RFC 3339, this API expects this format.
     let starting_at_timestamp = starting_at.timestamp().to_string();
@@ -24,14 +27,20 @@ pub fn fetch(
     // from the respond will automatically dictate this value until it reaches the false.
     let mut has_more: bool = true;
 
-    let mut is_first_round: bool = true;
+    // Manual counter.
+    let mut page_number = 1;
 
     // Start empty.
     let mut next_page: Option<String> = None;
     let mut usages: Vec<UsageDataBucket> = vec![];
 
     while has_more {
-        if !is_first_round {
+        // First things first, give users something to look at.
+        if let Some(spinner) = spinner_container.as_mut() {
+            spinner.update_text(progress_text(page_number))
+        }
+
+        if page_number > 1 {
             wait();
         }
 
@@ -49,7 +58,7 @@ pub fn fetch(
         // Now prepare it for the next round.
         has_more = body.has_more;
         next_page = body.next_page;
-        is_first_round = false;
+        page_number += 1;
     }
 
     Ok(usages)
@@ -121,4 +130,12 @@ fn wait() {
     let duration = std::time::Duration::from_secs(GAP_TIME_BETWEEN_FETCH_IN_SEC);
 
     std::thread::sleep(duration);
+}
+
+/// Returns a progress message with dots indicating the current page number.
+///
+/// User should see a proper visual feedback becasue fetching will take quite some time
+/// since I've put a big gap between fetches as a safety measure.
+fn progress_text(page_number: usize) -> String {
+    format!("Retrieving{}", ".".repeat(page_number))
 }

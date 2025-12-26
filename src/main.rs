@@ -74,6 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             cli.try_get_anthropic_key()?,
                             &report_start,
                             None,
+                            &mut spinner_container,
                         )?;
 
                         match args {
@@ -151,7 +152,7 @@ fn format(calculated_number: f64, no_format: bool) -> String {
 }
 
 fn create_spinner() -> Option<Spinner> {
-    Some(Spinner::new(spinners::Dots, "Retrieving...", Color::Blue))
+    Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue))
 }
 
 fn generate_cache_filename(serialized_args: &str) -> String {
