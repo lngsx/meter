@@ -7,14 +7,14 @@ mod io;
 use std::error::Error;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use jiff::{Zoned, Span};
+use jiff::{Span, Zoned};
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
 use std::hash::Hasher;
 use std::io::IsTerminal;
 use twox_hash::XxHash64;
 
-use io::claude_client::{MessagesUsageReport, UsageDataBucket};
+use io::claude_client::UsageDataBucket;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match &cli.command {
                     // meter raw.
                     Commands::Raw => {
-                        io::claude_client::fetch_raw(&zoned_now, cli.try_get_anthropic_key()?)?
+                        io::claude_client::fetch_raw(cli.try_get_anthropic_key()?, &zoned_now)?
                     }
 
                     // meter sum.
@@ -70,8 +70,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
                         // Everyone uses the same usages.
-                        let usages: Vec<UsageDataBucket> =
-                            io::claude_client::fetch(&report_start, cli.try_get_anthropic_key()?)?;
+                        let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
+                            cli.try_get_anthropic_key()?,
+                            &report_start,
+                            None,
+                        )?;
 
                         match args {
                             SumArgs {
@@ -87,7 +90,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                             SumArgs {
                                 metric: Metric::Cost,
                                 group_by: Some(Grouping::Model),
-                            } => calculation::claude::costs_by_model_as_csv(usages, cli.unformatted),
+                            } => {
+                                calculation::claude::costs_by_model_as_csv(usages, cli.unformatted)
+                            }
 
                             SumArgs {
                                 metric: Metric::Tokens,
@@ -190,9 +195,7 @@ impl Cli {
         // let since = self.since;
 
         let days_ago = match self.since.strip_suffix('d') {
-            Some(day) => {
-                day.parse::<u64>().map_err(|_| "Invalid number format.")?
-            }
+            Some(day) => day.parse::<u64>().map_err(|_| "Invalid number format.")?,
 
             None => {
                 return Err("Currently only 'd' suffix (e.g., '1d') is supported.".into());

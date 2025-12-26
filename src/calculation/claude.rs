@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::config::pricing_table::{PRICING, PricingTable};
-use crate::io::claude_client::{MessagesUsageReport, UsageResult, UsageDataBucket};
+use crate::io::claude_client::{UsageDataBucket, UsageResult};
 
 pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> f64 {
     usages
