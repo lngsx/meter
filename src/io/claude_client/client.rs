@@ -2,7 +2,7 @@ use std::error::Error;
 
 use jiff::Zoned;
 
-use super::dtos::MessagesUsageReport;
+use super::dtos::{MessagesUsageReport, UsageDataBucket};
 
 // Not this time.
 // use ureq::Error;
@@ -13,7 +13,7 @@ const USAGE_REPORT_ENDPOINT: &str =
     "https://api.anthropic.com/v1/organizations/usage_report/messages";
 
 /// The time value must be ready to use before it goes into this function.
-pub fn fetch(starting_at: &Zoned, key: &str) -> Result<MessagesUsageReport, Box<dyn Error>> {
+pub fn fetch(starting_at: &Zoned, key: &str) -> Result<Vec<UsageDataBucket>, Box<dyn Error>> {
     // let starting_at = start_of_day(jiff_zoned_time)?;
 
     // RFC 3339, this API expects this format.
@@ -31,12 +31,14 @@ pub fn fetch(starting_at: &Zoned, key: &str) -> Result<MessagesUsageReport, Box<
         .query("group_by[]", "workspace_id")
         .query("group_by[]", "api_key_id");
 
-    let report = request
+    let body = request
         .call()?
         .body_mut()
         .read_json::<MessagesUsageReport>()?;
 
-    Ok(report)
+    let plucked_data = body.data;
+
+    Ok(plucked_data)
 }
 
 /// Fetch then does nothing to the response, returns it right away.

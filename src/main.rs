@@ -14,7 +14,7 @@ use std::hash::Hasher;
 use std::io::IsTerminal;
 use twox_hash::XxHash64;
 
-use io::claude_client::MessagesUsageReport;
+use io::claude_client::{MessagesUsageReport, UsageDataBucket};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -69,8 +69,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let days_ago = cli.try_parse_since()? as i64;
                         let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
-                        // Everyone uses the same body.
-                        let body: MessagesUsageReport =
+                        // Everyone uses the same usages.
+                        let usages: Vec<UsageDataBucket> =
                             io::claude_client::fetch(&report_start, cli.try_get_anthropic_key()?)?;
 
                         match args {
@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 group_by: None,
                                 ..
                             } => {
-                                let summed = calculation::claude::calculate_total_cost(body);
+                                let summed = calculation::claude::calculate_total_cost(usages);
 
                                 format(summed, cli.unformatted)
                             }
@@ -87,17 +87,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                             SumArgs {
                                 metric: Metric::Cost,
                                 group_by: Some(Grouping::Model),
-                            } => calculation::claude::costs_by_model_as_csv(body, cli.unformatted),
+                            } => calculation::claude::costs_by_model_as_csv(usages, cli.unformatted),
 
                             SumArgs {
                                 metric: Metric::Tokens,
                                 group_by: Some(Grouping::Model),
-                            } => calculation::claude::tokens_by_model_as_csv(body),
+                            } => calculation::claude::tokens_by_model_as_csv(usages),
 
                             SumArgs {
                                 metric: Metric::Tokens,
                                 group_by: None,
-                            } => calculation::claude::sum_total_tokens(body).to_string(),
+                            } => calculation::claude::sum_total_tokens(usages).to_string(),
                         }
                     }
                 }
