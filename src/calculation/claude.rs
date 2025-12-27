@@ -3,10 +3,10 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::config::pricing_table::{PRICING, PricingTable};
-use crate::io::claude_client::{MessagesUsageReport, UsageResult};
+use crate::io::claude_client::{UsageDataBucket, UsageResult};
 
-pub fn calculate_total_cost(body: MessagesUsageReport) -> f64 {
-    body.data
+pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> f64 {
+    usages
         .iter()
         .flat_map(|bucket| &bucket.results) // pluck it.
         .fold(0.0, |summed_result, result_entry| {
@@ -28,8 +28,8 @@ pub fn calculate_total_cost(body: MessagesUsageReport) -> f64 {
         })
 }
 
-pub fn sum_total_tokens(body: MessagesUsageReport) -> u64 {
-    body.data
+pub fn sum_total_tokens(usages: Vec<UsageDataBucket>) -> u64 {
+    usages
         .iter()
         .flat_map(|bucket| &bucket.results) // pluck it.
         .fold(0, |acc, result_entry| {
@@ -42,9 +42,8 @@ pub fn sum_total_tokens(body: MessagesUsageReport) -> u64 {
         })
 }
 
-pub fn tokens_by_model_as_csv(body: MessagesUsageReport) -> String {
-    let grouped_tokens = body
-        .data
+pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> String {
+    let grouped_tokens = usages
         .into_iter()
         .flat_map(|bucket| bucket.results)
         .into_grouping_map_by(|result_entry| find_price(result_entry).base_model_name.to_owned())
@@ -60,9 +59,8 @@ pub fn tokens_by_model_as_csv(body: MessagesUsageReport) -> String {
     grouped_to_csv(grouped_tokens)
 }
 
-pub fn costs_by_model_as_csv(body: MessagesUsageReport, unformatted: bool) -> String {
-    let grouped_costs = body
-        .data
+pub fn costs_by_model_as_csv(usages: Vec<UsageDataBucket>, unformatted: bool) -> String {
+    let grouped_costs = usages
         .into_iter()
         .flat_map(|bucket| bucket.results)
         .into_grouping_map_by(|result_entry| find_price(result_entry).base_model_name.to_owned())

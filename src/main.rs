@@ -7,14 +7,14 @@ mod io;
 use std::error::Error;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use jiff::{Zoned, Span};
+use jiff::{Span, Zoned};
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
 use std::hash::Hasher;
 use std::io::IsTerminal;
 use twox_hash::XxHash64;
 
-use io::claude_client::MessagesUsageReport;
+use io::claude_client::UsageDataBucket;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -58,28 +58,39 @@ fn main() -> Result<(), Box<dyn Error>> {
                     spinner_container = create_spinner();
                 }
 
+                let days_ago = cli.try_parse_since()? as i64;
+                let report_start = calculate_start_date(&zoned_now, days_ago)?;
+
+                // Everyone uses the same usages.
+                let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
+                    cli.try_get_anthropic_key()?,
+                    &report_start,
+                    None,
+                    &mut spinner_container,
+                )?;
+
                 match &cli.command {
                     // meter raw.
                     Commands::Raw => {
-                        io::claude_client::fetch_raw(&zoned_now, cli.try_get_anthropic_key()?)?
+                        // Keep this for now until I am sure this design is okay.
+                        // io::claude_client::fetch_raw(cli.try_get_anthropic_key()?, &zoned_now)?
+
+                        if cli.unformatted {
+                            serde_json::to_string(&usages)?
+                        } else {
+                            serde_json::to_string_pretty(&usages)?
+                        }
                     }
 
                     // meter sum.
                     Commands::Sum(args) => {
-                        let days_ago = cli.try_parse_since()? as i64;
-                        let report_start = calculate_start_date(&zoned_now, days_ago)?;
-
-                        // Everyone uses the same body.
-                        let body: MessagesUsageReport =
-                            io::claude_client::fetch(&report_start, cli.try_get_anthropic_key()?)?;
-
                         match args {
                             SumArgs {
                                 metric: Metric::Cost,
                                 group_by: None,
                                 ..
                             } => {
-                                let summed = calculation::claude::calculate_total_cost(body);
+                                let summed = calculation::claude::calculate_total_cost(usages);
 
                                 format(summed, cli.unformatted)
                             }
@@ -87,17 +98,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                             SumArgs {
                                 metric: Metric::Cost,
                                 group_by: Some(Grouping::Model),
-                            } => calculation::claude::costs_by_model_as_csv(body, cli.unformatted),
+                            } => {
+                                calculation::claude::costs_by_model_as_csv(usages, cli.unformatted)
+                            }
 
                             SumArgs {
                                 metric: Metric::Tokens,
                                 group_by: Some(Grouping::Model),
-                            } => calculation::claude::tokens_by_model_as_csv(body),
+                            } => calculation::claude::tokens_by_model_as_csv(usages),
 
                             SumArgs {
                                 metric: Metric::Tokens,
                                 group_by: None,
-                            } => calculation::claude::sum_total_tokens(body).to_string(),
+                            } => calculation::claude::sum_total_tokens(usages).to_string(),
                         }
                     }
                 }
@@ -146,7 +159,7 @@ fn format(calculated_number: f64, no_format: bool) -> String {
 }
 
 fn create_spinner() -> Option<Spinner> {
-    Some(Spinner::new(spinners::Dots, "Retrieving...", Color::Blue))
+    Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue))
 }
 
 fn generate_cache_filename(serialized_args: &str) -> String {
@@ -190,9 +203,7 @@ impl Cli {
         // let since = self.since;
 
         let days_ago = match self.since.strip_suffix('d') {
-            Some(day) => {
-                day.parse::<u64>().map_err(|_| "Invalid number format.")?
-            }
+            Some(day) => day.parse::<u64>().map_err(|_| "Invalid number format.")?,
 
             None => {
                 return Err("Currently only 'd' suffix (e.g., '1d') is supported.".into());
@@ -258,10 +269,15 @@ struct Cli {
 
 #[derive(Subcommand, Debug, Serialize)]
 enum Commands {
-    /// meter sum
+    /// Calculate aggregated usage (cost, tokens).
     Sum(SumArgs),
 
-    /// meter raw
+    /// Retrieve the raw, unaggregated usage data as JSON.
+    ///
+    /// This outputs the full history of usage buckets. Useful for piping into 
+    /// tools like `jq` or for building custom analysis scripts.
+    ///
+    /// Go build something fun on top of this!
     Raw,
 }
 

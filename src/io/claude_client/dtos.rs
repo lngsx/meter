@@ -19,6 +19,9 @@ pub struct MessagesUsageReport {
 
     /// Indicates if there are more results available.
     pub has_more: bool,
+
+    /// Token to provide in as page in the subsequent request to retrieve the next page of data.
+    pub next_page: Option<String>,
 }
 
 /// Represents a specific time bucket of usage data.
