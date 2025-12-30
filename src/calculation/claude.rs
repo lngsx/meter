@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use miette::{Context, IntoDiagnostic};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -174,12 +175,18 @@ fn grouped_to_csv<T: Serialize>(grouped_hashmap: HashMap<String, T>) -> miette::
 
         writer
             .serialize(row)
-            .expect("Something went wrong in the csv serialization, go investigate this.");
+            .into_diagnostic()
+            .wrap_err("Failed to serialize grouped data row to CSV format")?;
     }
 
-    let data = writer.into_inner().expect("Failed to get writer data.");
+    let data = writer
+        .into_inner()
+        .into_diagnostic()
+        .wrap_err("Failed to get writer data.")?;
 
-    let csv_string = String::from_utf8(data).expect("Invalid utf-8");
+    let csv_string = String::from_utf8(data)
+        .into_diagnostic()
+        .wrap_err("Invalid utf-8")?;
 
     Ok(csv_string)
 }
