@@ -91,7 +91,7 @@ fn main() -> miette::Result<()> {
                                 group_by: None,
                                 ..
                             } => {
-                                let summed = calculation::claude::calculate_total_cost(usages);
+                                let summed = calculation::claude::calculate_total_cost(usages)?;
 
                                 format(summed, cli.unformatted)
                             }
@@ -100,13 +100,13 @@ fn main() -> miette::Result<()> {
                                 metric: Metric::Cost,
                                 group_by: Some(Grouping::Model),
                             } => {
-                                calculation::claude::costs_by_model_as_csv(usages, cli.unformatted)
+                                calculation::claude::costs_by_model_as_csv(usages, cli.unformatted)?
                             }
 
                             SumArgs {
                                 metric: Metric::Tokens,
                                 group_by: Some(Grouping::Model),
-                            } => calculation::claude::tokens_by_model_as_csv(usages),
+                            } => calculation::claude::tokens_by_model_as_csv(usages)?,
 
                             SumArgs {
                                 metric: Metric::Tokens,
