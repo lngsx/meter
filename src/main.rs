@@ -7,7 +7,7 @@ mod io;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use jiff::{Span, Zoned};
-use miette::{IntoDiagnostic, WrapErr};
+use miette::{IntoDiagnostic, WrapErr, miette};
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
 use std::hash::Hasher;
@@ -19,7 +19,7 @@ use io::claude_client::UsageDataBucket;
 
 fn main() -> miette::Result<()> {
     let cli = Cli::parse();
-    let args_signature = create_args_signature(&cli);
+    let args_signature = create_args_signature(&cli)?;
 
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
@@ -37,7 +37,7 @@ fn main() -> miette::Result<()> {
     let ttl_minutes: i64 = cli.ttl_minutes;
 
     let cache_dir = dirs::cache_dir()
-        .expect("Could not find a cache directory.")
+        .ok_or_else(|| miette!("Could not find a cache directory."))?
         .join("meter")
         .join("claude");
 
@@ -175,11 +175,14 @@ fn generate_cache_filename(serialized_args: &str) -> String {
     format!("{:x}", hashed)
 }
 
-fn create_args_signature(cli: &Cli) -> String {
+fn create_args_signature(cli: &Cli) -> miette::Result<String> {
     let serialized = serde_json::to_string(cli)
-        .expect("Failed to serialize command arguments; debounce failed, operation rejected");
+        .into_diagnostic()
+        .wrap_err("Failed to serialize command arguments; debounce failed, operation rejected.")?;
 
-    generate_cache_filename(&serialized)
+    let file_name = generate_cache_filename(&serialized);
+
+    Ok(file_name)
 }
 
 fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zoned> {
