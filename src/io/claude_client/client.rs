@@ -2,6 +2,7 @@ use std::error::Error;
 
 use jiff::Zoned;
 
+use miette::IntoDiagnostic;
 use spinoff::Spinner;
 
 use super::dtos::{MessagesUsageReport, UsageDataBucket};
@@ -18,7 +19,7 @@ pub fn fetch(
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
     spinner_container: &mut Option<Spinner>,
-) -> Result<Vec<UsageDataBucket>, Box<dyn Error>> {
+) -> miette::Result<Vec<UsageDataBucket>> {
     // RFC 3339, this API expects this format.
     let starting_at_timestamp = starting_at.timestamp().to_string();
     let ending_at_timestamp = ending_at.map(|time| time.timestamp().to_string());
@@ -69,7 +70,7 @@ fn inner_fetch(
     starting_at_timestamp: &str,
     ending_at_timestamp: Option<&str>,
     next_page: Option<&str>,
-) -> Result<MessagesUsageReport, Box<dyn Error>> {
+) -> miette::Result<MessagesUsageReport> {
     let request = ureq::get(USAGE_REPORT_ENDPOINT)
         .header("anthropic-version", API_VERSION)
         .header("X-Api-Key", key)
@@ -95,9 +96,11 @@ fn inner_fetch(
     };
 
     let body = request
-        .call()?
+        .call()
+        .into_diagnostic()?
         .body_mut()
-        .read_json::<MessagesUsageReport>()?;
+        .read_json::<MessagesUsageReport>()
+        .into_diagnostic()?;
 
     Ok(body)
 }
