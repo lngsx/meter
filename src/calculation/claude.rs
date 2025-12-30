@@ -6,9 +6,8 @@ use crate::config::pricing_table::{PRICING, PricingTable};
 use crate::io::claude_client::{UsageDataBucket, UsageResult};
 
 pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> f64 {
-    usages
+    results(usages)
         .iter()
-        .flat_map(|bucket| &bucket.results) // pluck it.
         .fold(0.0, |summed_result, result_entry| {
             let pricing = find_price(result_entry);
 
@@ -29,9 +28,8 @@ pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> f64 {
 }
 
 pub fn sum_total_tokens(usages: Vec<UsageDataBucket>) -> u64 {
-    usages
+    results(usages)
         .iter()
-        .flat_map(|bucket| &bucket.results) // pluck it.
         .fold(0, |acc, result_entry| {
             let total_input_tokens =
                 result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
@@ -43,9 +41,8 @@ pub fn sum_total_tokens(usages: Vec<UsageDataBucket>) -> u64 {
 }
 
 pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> String {
-    let grouped_tokens = usages
+    let grouped_tokens = results(usages)
         .into_iter()
-        .flat_map(|bucket| bucket.results)
         .into_grouping_map_by(|result_entry| find_price(result_entry).base_model_name.to_owned())
         .fold(0, |acc, _key, result_entry| {
             let total_input_tokens =
@@ -60,9 +57,8 @@ pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> String {
 }
 
 pub fn costs_by_model_as_csv(usages: Vec<UsageDataBucket>, unformatted: bool) -> String {
-    let grouped_costs = usages
+    let grouped_costs = results(usages)
         .into_iter()
-        .flat_map(|bucket| bucket.results)
         .into_grouping_map_by(|result_entry| find_price(result_entry).base_model_name.to_owned())
         .fold(0.0, |summed_result, group_key, result_entry| {
             let pricing = PRICING
@@ -170,4 +166,12 @@ fn grouped_to_csv<T: Serialize>(grouped_hashmap: HashMap<String, T>) -> String {
     let data = writer.into_inner().expect("Failed to get writer data.");
 
     String::from_utf8(data).expect("Invalid utf-8")
+}
+
+/// Extract this into a function to prepare the upcoming big refactoring.
+fn results(usages: Vec<UsageDataBucket>) -> Vec<UsageResult> {
+    usages
+        .into_iter()
+        .flat_map(|bucket| bucket.results) // pluck it.
+        .collect()
 }
