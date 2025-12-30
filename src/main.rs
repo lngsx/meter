@@ -2,17 +2,19 @@ extern crate dirs;
 
 mod calculation;
 mod config;
+mod error;
 mod io;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use jiff::{Span, Zoned};
-use miette::{IntoDiagnostic, WrapErr, miette};
+use miette::{IntoDiagnostic, WrapErr};
 use serde::Serialize;
 use spinoff::{Color, Spinner, spinners};
 use std::hash::Hasher;
 use std::io::IsTerminal;
 use twox_hash::XxHash64;
 
+use error::Error;
 use io::claude_client::UsageDataBucket;
 
 fn main() -> miette::Result<()> {
@@ -202,30 +204,49 @@ impl Cli {
         //     .as_ref()
         //     .ok_or_else(|| "Anthropic API key not found.".into())
 
-        self.anthropic_admin_api_key
+        let key = self
+            .anthropic_admin_api_key
             .as_ref()
-            .wrap_err("Anthropic API key not found.")
+            .ok_or(Error::AnthropicKeyNotFound)?;
+        // .wrap_err("Anthropic API key not found.")
+
+        Ok(key)
     }
 
     /// An another poor man's solution to the compact date range string parser.
     /// Return a number of day user put in.
     /// Only support day unit for now.
     fn try_parse_since(&self) -> miette::Result<u64> {
-        // let since = self.since.as_deref().unwrap_or("0d");
-        // let since = self.since;
+        let since = &self.since;
 
-        let days_ago = match self.since.strip_suffix('d') {
-            Some(day) => day
-                        .parse::<u64>()
-                        .into_diagnostic()
-                        .wrap_err("Invalid number format. Expected an integer before 'd'.")?,
+        let Some(digits) = since.strip_suffix('d') else {
+            let error = Error::UnsupportedTimeUnit(since.to_owned());
 
-            None => {
-                return Err(miette!("Currently only 'd' suffix (e.g., '1d') is supported."));
-            }
+            return Err(error.into());
         };
 
-        Ok(days_ago)
+        let numbers = digits
+            .parse::<u64>()
+            .map_err(|_| Error::InvalidDuration(digits.to_owned()))?;
+
+        Ok(numbers)
+
+        // // let since = self.since.as_deref().unwrap_or("0d");
+        // // let since = self.since;
+        // let days_ago = match self.since.strip_suffix('d') {
+        //     Some(day) => day
+        //                 .parse::<u64>()
+        //                 .map_err(|_| Error::InvalidSinceDuration(day.to_owned()))?,
+        //                 // .wrap_err("Invalid number format. Expected an integer before 'd'.")?,
+        //
+        //     None => {
+        //         let input = self.since.to_owned();
+        //
+        //         return Err(Error::UnsupportedSinceUnit(input)).into_diagnostic();
+        //     }
+        // };
+        //
+        // Ok(days_ago)
     }
 }
 
