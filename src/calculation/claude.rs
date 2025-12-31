@@ -1,16 +1,17 @@
 use itertools::Itertools;
+use miette::{Context, IntoDiagnostic};
 use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::config::pricing_table::{PRICING, PricingTable};
+use crate::error::Error;
 use crate::io::claude_client::{UsageDataBucket, UsageResult};
 
-pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> f64 {
-    usages
+pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> miette::Result<f64> {
+    flatten_usage_buckets(usages)
         .iter()
-        .flat_map(|bucket| &bucket.results) // pluck it.
-        .fold(0.0, |summed_result, result_entry| {
-            let pricing = find_price(result_entry);
+        .try_fold(0.0, |summed_result, result_entry| {
+            let pricing = find_price(result_entry)?;
 
             // Collect every input tokens.
             // No ephemeral input cache thing because I don't know what it is - -'
@@ -24,14 +25,13 @@ pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> f64 {
 
             let total_cost = input_cost + output_cost;
 
-            total_cost + summed_result
+            Ok(total_cost + summed_result)
         })
 }
 
 pub fn sum_total_tokens(usages: Vec<UsageDataBucket>) -> u64 {
-    usages
+    flatten_usage_buckets(usages)
         .iter()
-        .flat_map(|bucket| &bucket.results) // pluck it.
         .fold(0, |acc, result_entry| {
             let total_input_tokens =
                 result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
@@ -42,33 +42,42 @@ pub fn sum_total_tokens(usages: Vec<UsageDataBucket>) -> u64 {
         })
 }
 
-pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> String {
-    let grouped_tokens = usages
-        .into_iter()
-        .flat_map(|bucket| bucket.results)
-        .into_grouping_map_by(|result_entry| find_price(result_entry).base_model_name.to_owned())
-        .fold(0, |acc, _key, result_entry| {
-            let total_input_tokens =
-                result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
+pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> miette::Result<String> {
+    let usage_results = flatten_usage_buckets(usages);
+    let keyed_results = into_key_pairs(usage_results)?;
 
-            let total_output_tokens = result_entry.output_tokens;
+    let grouped_tokens =
+        keyed_results
+            .into_iter()
+            .into_grouping_map()
+            .fold(0, |acc, _key, result_entry| {
+                let total_input_tokens =
+                    result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
 
-            total_input_tokens + total_output_tokens + acc
-        });
+                let total_output_tokens = result_entry.output_tokens;
+
+                total_input_tokens + total_output_tokens + acc
+            });
 
     grouped_to_csv(grouped_tokens)
 }
 
-pub fn costs_by_model_as_csv(usages: Vec<UsageDataBucket>, unformatted: bool) -> String {
-    let grouped_costs = usages
-        .into_iter()
-        .flat_map(|bucket| bucket.results)
-        .into_grouping_map_by(|result_entry| find_price(result_entry).base_model_name.to_owned())
-        .fold(0.0, |summed_result, group_key, result_entry| {
+pub fn costs_by_model_as_csv(
+    usages: Vec<UsageDataBucket>,
+    unformatted: bool,
+) -> miette::Result<String> {
+    let usage_results = flatten_usage_buckets(usages);
+    let keyed_results = into_key_pairs(usage_results)?;
+
+    let grouped_costs = keyed_results.into_iter().into_grouping_map().fold(
+        0.0,
+        |summed_result, group_key, result_entry| {
+            // Since keyed_results has validated the price existence in the table,
+            // we can safely unwrap the pricing entry.
             let pricing = PRICING
                 .iter()
                 .find(|&table_entry| table_entry.base_model_name == group_key)
-                .expect("No model found in the pricing table.");
+                .unwrap();
 
             let total_input_tokens =
                 result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
@@ -81,7 +90,8 @@ pub fn costs_by_model_as_csv(usages: Vec<UsageDataBucket>, unformatted: bool) ->
             let total_cost = input_cost + output_cost;
 
             total_cost + summed_result
-        });
+        },
+    );
 
     let formatted_costs: HashMap<String, String> = grouped_costs
         .into_iter()
@@ -123,7 +133,7 @@ fn calculate_cost(tokens: u64, price_per_million: f64) -> f64 {
 /// It reads the full model name that gets reported (e.g., "claude-sonnet-4-5-datexyz"),
 /// and matches it to our simpler one ("claude-sonnet-4-5").
 /// Panics on missing entries to force me to add them to the table.
-fn find_price(result_entry: &UsageResult) -> &PricingTable {
+fn find_price(result_entry: &UsageResult) -> miette::Result<&PricingTable> {
     let context_window = &result_entry.context_window;
 
     // Find the pricing data from the lookup table.
@@ -134,14 +144,17 @@ fn find_price(result_entry: &UsageResult) -> &PricingTable {
         })
     });
 
-    // I am too lazy to add every models into the table.
-    pricing_data.unwrap_or_else(|| {
-        panic!(
-            "🙏 Sorry! Pricing configuration is missing: \n{:?}\n{:?}.\n\
-            Please inform the author to update the pricing table.",
-            result_entry.model, context_window
-        );
-    })
+    let pricing_entry = pricing_data.ok_or_else(|| {
+        let reported_model_name = result_entry.model.as_deref().unwrap_or("Unknown");
+        let reported_context_window = context_window.as_deref().unwrap_or("Unknown");
+
+        Error::PricingNotFound {
+            model: reported_model_name.to_owned(),
+            context_window: reported_context_window.to_owned(),
+        }
+    })?;
+
+    Ok(pricing_entry)
 }
 
 #[derive(Serialize)]
@@ -151,7 +164,7 @@ struct GroupByModel<T> {
 }
 
 /// Converts a hashmap of grouped data into a CSV-formatted string.
-fn grouped_to_csv<T: Serialize>(grouped_hashmap: HashMap<String, T>) -> String {
+fn grouped_to_csv<T: Serialize>(grouped_hashmap: HashMap<String, T>) -> miette::Result<String> {
     let mut writer = csv::WriterBuilder::new()
         .has_headers(false) // I don't want a header.
         .from_writer(vec![]);
@@ -164,10 +177,47 @@ fn grouped_to_csv<T: Serialize>(grouped_hashmap: HashMap<String, T>) -> String {
 
         writer
             .serialize(row)
-            .expect("Something went wrong in the csv serialization, go investigate this.");
+            .into_diagnostic()
+            .wrap_err("Failed to serialize grouped data row to CSV format")?;
     }
 
-    let data = writer.into_inner().expect("Failed to get writer data.");
+    let data = writer
+        .into_inner()
+        .into_diagnostic()
+        .wrap_err("Failed to get writer data.")?;
 
-    String::from_utf8(data).expect("Invalid utf-8")
+    let csv_string = String::from_utf8(data)
+        .into_diagnostic()
+        .wrap_err("Invalid utf-8")?;
+
+    Ok(csv_string)
+}
+
+/// Flattens a collection of usage buckets into a single list of results.
+fn flatten_usage_buckets(usages: Vec<UsageDataBucket>) -> Vec<UsageResult> {
+    usages
+        .into_iter()
+        .flat_map(|bucket| bucket.results) // pluck it.
+        .collect()
+}
+
+type GroupedUsage = Vec<(String, UsageResult)>;
+
+/// Extracts base model names as keys for each usage result.
+///
+/// Transforms results into (key, value) tuples compatible with itertools `into_grouping_map()`,
+/// where keys are base model names from the pricing table.
+///
+/// This also helps validate that each reporting model name exists in the pricing table.
+/// Returns Err immediately if any model is not found.
+fn into_key_pairs(results: Vec<UsageResult>) -> miette::Result<GroupedUsage> {
+    results
+        .into_iter()
+        .map(|entry| {
+            let pricing = find_price(&entry)?;
+            let key = pricing.base_model_name.to_owned();
+
+            Ok((key, entry))
+        })
+        .collect()
 }

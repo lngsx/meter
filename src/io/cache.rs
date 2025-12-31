@@ -1,6 +1,5 @@
 use jiff::{Timestamp, ToSpan};
-
-use std::error::Error;
+use miette::IntoDiagnostic;
 
 use std::fs;
 
@@ -8,8 +7,8 @@ pub fn try_retrieve_cache(
     cache_file_path: &std::path::Path,
     ttl: &i64,
     system_now: &Timestamp,
-) -> Result<Option<String>, Box<dyn Error>> {
-    if !cache_file_path.try_exists()? {
+) -> miette::Result<Option<String>> {
+    if !cache_file_path.try_exists().into_diagnostic()? {
         return Ok(None);
     }
 
@@ -17,7 +16,7 @@ pub fn try_retrieve_cache(
         return Ok(None);
     }
 
-    let content = Some(fs::read_to_string(cache_file_path)?);
+    let content = Some(fs::read_to_string(cache_file_path).into_diagnostic()?);
 
     Ok(content)
 }
@@ -27,14 +26,14 @@ pub fn try_write_cache(
     body_string: &str,
     ttl: &i64,
     system_now: &Timestamp,
-) -> Result<(), Box<dyn Error>> {
+) -> miette::Result<()> {
     // Ensure the directory exists.
     if let Some(parent) = cache_file_path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).into_diagnostic()?;
     }
 
-    let is_cache_alive =
-        cache_file_path.try_exists()? && !is_cache_expired(cache_file_path, system_now, ttl)?;
+    let is_cache_alive = cache_file_path.try_exists().into_diagnostic()?
+        && !is_cache_expired(cache_file_path, system_now, ttl)?;
 
     // Do not touch it if the cache is still alive.
     // Because we rely on the mtime, if we touch it, the countdown will change.
@@ -43,7 +42,7 @@ pub fn try_write_cache(
         return Ok(());
     }
 
-    fs::write(cache_file_path, body_string)?;
+    fs::write(cache_file_path, body_string).into_diagnostic()?;
 
     Ok(())
 }
@@ -52,20 +51,10 @@ fn is_cache_expired(
     cache_file_path: &std::path::Path,
     system_now: &Timestamp,
     ttl: &i64,
-) -> Result<bool, Box<dyn Error>> {
-    let metadata = fs::metadata(cache_file_path)?;
-    let file_mtime = metadata.modified()?;
-    let expiration_time = Timestamp::try_from(file_mtime)? + ttl.minutes();
+) -> miette::Result<bool> {
+    let metadata = fs::metadata(cache_file_path).into_diagnostic()?;
+    let file_mtime = metadata.modified().into_diagnostic()?;
+    let expiration_time = Timestamp::try_from(file_mtime).into_diagnostic()? + ttl.minutes();
 
     Ok(expiration_time <= *system_now)
 }
-
-// This is my original implementation, it's make code read better in ruby style,
-// but I removed it as I was afraid to maintain it.
-// fn is_cache_alive(
-//     cache_file_path: &std::path::Path,
-//     system_now: &Timestamp,
-//     ttl: &i64,
-// ) -> Result<bool, Box<dyn Error>> {
-//     is_cache_expired(cache_file_path, system_now, ttl).map(|expired| !expired)
-// }
