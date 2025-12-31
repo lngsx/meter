@@ -48,9 +48,31 @@ fn main() -> miette::Result<()> {
     let output_message: String =
         match io::cache::try_retrieve_cache(cache_file_path, &ttl_minutes, system_now) {
             // Cache hit. The content is ready to use.
-            Ok(Some(string)) => string,
+            Ok(Some(cached_string)) => cached_string,
 
-            // No cache, expired, or it doesn't exist, so it's okay to refresh.
+            // Cache failed to load somehow.
+            //
+            // This program must not be run without a cache.
+            //
+            // It's meant to be used inside a tmux plugin, which may be invoked repeatedly
+            // based on its refresh rate (I don't know the exact number, but I am sure it must be
+            // very frequent), in multiple instances.
+            //
+            // The result of the command has to be memoized, and when that very command is asked
+            // again, we return the result immediately from the filesystem.
+            // That was the initial design. I really have no idea what it would be in the
+            // real implementation. Let's hope it works!
+            //
+            // So, we can't let it silently break inside.
+            // That's why I have to make this explicit.
+            Err(e) => {
+                return Err(e).wrap_err(
+                    "Cache failed to load. Aborting to avoid the API ban (you're welcome).",
+                );
+            }
+
+            // No cache, expired, or doesn't exist, so it's okay to refresh.
+            // The actual application logic happens here.
             Ok(None) => {
                 // Improve ergonomics by auto detecting terminals.
                 // This prevents the fancy spinner from flooding pipes or breaking tmux status bars.
@@ -108,25 +130,6 @@ fn main() -> miette::Result<()> {
                         } => calculation::claude::sum_total_tokens(usages).to_string(),
                     },
                 }
-            }
-
-            // This program must not be run without a cache.
-            //
-            // It's meant to be used inside a tmux plugin, which may be invoked repeatedly
-            // based on its refresh rate (I don't know the exact number, but I am sure it must be
-            // very frequent), in multiple instances.
-            //
-            // The result of the command has to be memoized, and when that very command is asked
-            // again, we return the result immediately from the filesystem.
-            // That was the initial design. I really have no idea what it would be in the
-            // real implementation. Let's hope it works!
-            //
-            // So, we can't let it silently break inside.
-            // That's why I have to make this explicit.
-            Err(e) => {
-                return Err(e).wrap_err(
-                    "Cache failed to load. Aborting to avoid the API ban (you're welcome).",
-                );
             }
         };
 
