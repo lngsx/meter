@@ -39,16 +39,22 @@ Try running `echo $ANTHROPIC_ADMIN_API_KEY` to check if it's present or restart 
         url("https://platform.claude.com/docs/en/build-with-claude/administration-api")
     )]
     AnthropicKeyNotFound,
-    // #[error(
-    //     "🙏 Sorry! Pricing configuration is missing for model: {model:?} (Context: {context_window:?})"
-    // )]
-    // #[diagnostic(
-    //     code(meter::pricing::missing_configuration),
-    //     help("Please inform the author to update the pricing table.")
-    // )]
-    // PricingNotFound {
-    //     model: String,
-    //
-    //     context_window: String,
-    // },
+
+    /// I am too lazy to add every model to the table, so this is the price for users.
+    /// This will take them to the GitHub issue form, prefilled.
+    /// The good thing is, at least I have something to play with in the miette error report.
+    #[error(
+        "🙏 Sorry! The system is fine, but pricing information is missing for:\nmodel: {model:?}\ncontext_window: {context_window:?}"
+    )]
+    #[diagnostic(
+        code(meter::pricing::missing_configuration),
+        help("Please report this using the URL above so we can add the pricing. Thank you!"),
+        url(
+            "https://github.com/lngsx/meter/issues/new?title=%F0%9F%92%B8%20Missing%20pricing%20configuration&body=model: {model:?}%0Acontext_window: {context_window:?}"
+        )
+    )]
+    PricingNotFound {
+        model: String,
+        context_window: String,
+    },
 }

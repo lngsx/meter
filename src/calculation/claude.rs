@@ -4,6 +4,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::config::pricing_table::{PRICING, PricingTable};
+use crate::error::Error;
 use crate::io::claude_client::{UsageDataBucket, UsageResult};
 
 pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> miette::Result<f64> {
@@ -144,15 +145,17 @@ fn find_price(result_entry: &UsageResult) -> miette::Result<&PricingTable> {
         })
     });
 
-    // I am too lazy to add every models into the table.
-    pricing_data.ok_or_else(|| {
-        miette::miette!(
-            "🙏 Sorry! Pricing configuration is missing: \n{:?}\n{:?}.\n\
-            Please inform the author to update the pricing table.",
-            result_entry.model,
-            context_window
-        )
-    })
+    let pricing_entry = pricing_data.ok_or_else(|| {
+        let reported_model_name = result_entry.model.as_deref().unwrap_or("Unknown");
+        let reported_context_window = context_window.as_deref().unwrap_or("Unknown");
+
+        Error::PricingNotFound {
+            model: reported_model_name.to_owned(),
+            context_window: reported_context_window.to_owned(),
+        }
+    })?;
+
+    Ok(pricing_entry)
 }
 
 #[derive(Serialize)]
