@@ -73,9 +73,6 @@ fn main() -> miette::Result<()> {
                 match &cli.command {
                     // meter raw.
                     Commands::Raw => {
-                        // Keep this for now until I am sure this design is okay.
-                        // io::claude_client::fetch_raw(cli.try_get_anthropic_key()?, &zoned_now)?
-
                         if cli.unformatted {
                             serde_json::to_string(&usages).into_diagnostic()?
                         } else {
@@ -203,15 +200,10 @@ impl Cli {
     // I will later come back to it to improve if I add more providers.
     // Just platforming it now so I can understand the big picture easily in the future.
     fn try_get_anthropic_key(&self) -> miette::Result<&String> {
-        // self.anthropic_admin_api_key
-        //     .as_ref()
-        //     .ok_or_else(|| "Anthropic API key not found.".into())
-
         let key = self
             .anthropic_admin_api_key
             .as_ref()
             .ok_or(Error::AnthropicKeyNotFound)?;
-        // .wrap_err("Anthropic API key not found.")
 
         Ok(key)
     }
@@ -233,23 +225,6 @@ impl Cli {
             .map_err(|_| Error::InvalidDuration(digits.to_owned()))?;
 
         Ok(numbers)
-
-        // // let since = self.since.as_deref().unwrap_or("0d");
-        // // let since = self.since;
-        // let days_ago = match self.since.strip_suffix('d') {
-        //     Some(day) => day
-        //                 .parse::<u64>()
-        //                 .map_err(|_| Error::InvalidSinceDuration(day.to_owned()))?,
-        //                 // .wrap_err("Invalid number format. Expected an integer before 'd'.")?,
-        //
-        //     None => {
-        //         let input = self.since.to_owned();
-        //
-        //         return Err(Error::UnsupportedSinceUnit(input)).into_diagnostic();
-        //     }
-        // };
-        //
-        // Ok(days_ago)
     }
 }
 

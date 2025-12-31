@@ -48,7 +48,6 @@ pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> miette::Result<St
 
     let grouped_tokens = keyed_results
         .into_iter()
-        // .into_grouping_map(|result_entry| find_price(result_entry).base_model_name.to_owned())
         .into_grouping_map()
         .fold(0, |acc, _key, result_entry| {
             let total_input_tokens =
@@ -78,7 +77,6 @@ pub fn costs_by_model_as_csv(
                 .iter()
                 .find(|&table_entry| table_entry.base_model_name == group_key)
                 .unwrap();
-            // .expect("No model found in the pricing table.");
 
             let total_input_tokens =
                 result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
