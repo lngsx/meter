@@ -46,19 +46,20 @@ pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> miette::Result<St
     let usage_results = flatten_usage_buckets(usages);
     let keyed_results = into_key_pairs(usage_results)?;
 
-    let grouped_tokens = keyed_results
-        .into_iter()
-        .into_grouping_map()
-        .fold(0, |acc, _key, result_entry| {
-            let total_input_tokens =
-                result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
+    let grouped_tokens =
+        keyed_results
+            .into_iter()
+            .into_grouping_map()
+            .fold(0, |acc, _key, result_entry| {
+                let total_input_tokens =
+                    result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
 
-            let total_output_tokens = result_entry.output_tokens;
+                let total_output_tokens = result_entry.output_tokens;
 
-            total_input_tokens + total_output_tokens + acc
-        });
+                total_input_tokens + total_output_tokens + acc
+            });
 
-    Ok(grouped_to_csv(grouped_tokens)?)
+    grouped_to_csv(grouped_tokens)
 }
 
 pub fn costs_by_model_as_csv(

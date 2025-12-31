@@ -81,36 +81,32 @@ fn main() -> miette::Result<()> {
                     }
 
                     // meter sum.
-                    Commands::Sum(args) => {
-                        match args {
-                            SumArgs {
-                                metric: Metric::Cost,
-                                group_by: None,
-                                ..
-                            } => {
-                                let summed = calculation::claude::calculate_total_cost(usages)?;
+                    Commands::Sum(args) => match args {
+                        SumArgs {
+                            metric: Metric::Cost,
+                            group_by: None,
+                            ..
+                        } => {
+                            let summed = calculation::claude::calculate_total_cost(usages)?;
 
-                                format(summed, cli.unformatted)
-                            }
-
-                            SumArgs {
-                                metric: Metric::Cost,
-                                group_by: Some(Grouping::Model),
-                            } => {
-                                calculation::claude::costs_by_model_as_csv(usages, cli.unformatted)?
-                            }
-
-                            SumArgs {
-                                metric: Metric::Tokens,
-                                group_by: Some(Grouping::Model),
-                            } => calculation::claude::tokens_by_model_as_csv(usages)?,
-
-                            SumArgs {
-                                metric: Metric::Tokens,
-                                group_by: None,
-                            } => calculation::claude::sum_total_tokens(usages).to_string(),
+                            format(summed, cli.unformatted)
                         }
-                    }
+
+                        SumArgs {
+                            metric: Metric::Cost,
+                            group_by: Some(Grouping::Model),
+                        } => calculation::claude::costs_by_model_as_csv(usages, cli.unformatted)?,
+
+                        SumArgs {
+                            metric: Metric::Tokens,
+                            group_by: Some(Grouping::Model),
+                        } => calculation::claude::tokens_by_model_as_csv(usages)?,
+
+                        SumArgs {
+                            metric: Metric::Tokens,
+                            group_by: None,
+                        } => calculation::claude::sum_total_tokens(usages).to_string(),
+                    },
                 }
             }
 
