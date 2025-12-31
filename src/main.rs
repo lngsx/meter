@@ -20,6 +20,7 @@ use io::claude_client::UsageDataBucket;
 fn main() -> miette::Result<()> {
     let cli = Cli::parse();
     let args_signature = create_args_signature(&cli)?;
+    let cache_file_path = create_cache_file_path(&args_signature)?;
 
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
@@ -36,17 +37,8 @@ fn main() -> miette::Result<()> {
     // I am going to make this an input argument in the future.
     let ttl_minutes: i64 = cli.ttl_minutes;
 
-    let cache_dir = dirs::cache_dir()
-        .ok_or_else(|| miette!("Could not find a cache directory."))?
-        .join("meter")
-        .join("claude");
-
-    // I will improve this later. I have some ideas about it.
-    let cache_file_name = format!("cache_{}", args_signature);
-    let cache_file_path = &cache_dir.join(cache_file_name);
-
     let output_message: String =
-        match io::cache::try_retrieve_cache(cache_file_path, &ttl_minutes, system_now) {
+        match io::cache::try_retrieve_cache(&cache_file_path, &ttl_minutes, system_now) {
             // Cache hit. The content is ready to use.
             Ok(Some(cached_string)) => cached_string,
 
@@ -135,7 +127,7 @@ fn main() -> miette::Result<()> {
 
     // A simple way to check the output validity, for now.
     if !output_message.is_empty() {
-        io::cache::try_write_cache(cache_file_path, &output_message, &ttl_minutes, system_now)?;
+        io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
     // Print the result.
@@ -192,6 +184,22 @@ fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zone
         .wrap_err("Could not resolve the start of the day (midnight) for this date/timezone")?;
 
     Ok(target_start_of_day)
+}
+
+/// Compose the platform-specific cache file path for a given argument signature.
+///
+/// The resulting path follows the pattern:
+/// `{cache_dir}/meter/claude/cache_7a2f4c91b0e3`
+fn create_cache_file_path(args_signature: &str) -> miette::Result<std::path::PathBuf> {
+    let dir = dirs::cache_dir()
+        .ok_or_else(|| miette!("Could not find a cache directory."))?
+        .join("meter")
+        .join("claude");
+
+    let file_name = format!("cache_{}", args_signature);
+    let file_path = dir.join(file_name);
+
+    Ok(file_path)
 }
 
 impl Cli {
