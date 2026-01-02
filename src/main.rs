@@ -66,12 +66,7 @@ fn main() -> miette::Result<()> {
             // No cache, expired, or doesn't exist, so it's okay to refresh.
             // The actual application logic happens here.
             Ok(None) => {
-                // Improve ergonomics by auto detecting terminals.
-                // This prevents the fancy spinner from flooding pipes or breaking tmux status bars.
-                // This saves users from having to mandatory, constantly append `--no-animate`.
-                if !cli.no_animate && std::io::stdout().is_terminal() {
-                    spinner_container = create_spinner();
-                }
+                spinner_container = create_spinner_unless_no_terminal_or(cli.no_animate);
 
                 let days_ago = cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
@@ -149,7 +144,18 @@ fn format(calculated_number: f64, no_format: bool) -> String {
     format!("${:.2}", calculated_number)
 }
 
-fn create_spinner() -> Option<Spinner> {
+/// Attempts to create a spinner based on user preference and terminal capabilities.
+///
+/// This improves ergonomics by auto-detecting terminals, which prevents the fancy 
+/// spinner from flooding pipes or breaking tmux status bars. This saves users 
+/// from having to mandatory, constantly append `--no-animate`.
+//
+// Note: Just wanted to be clear about the dependency, so I encoded it in the name.
+fn create_spinner_unless_no_terminal_or(no_animate: bool) -> Option<Spinner> {
+    if no_animate || !std::io::stdout().is_terminal() {
+        return None;
+    }
+
     Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue))
 }
 
