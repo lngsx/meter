@@ -20,6 +20,7 @@ use io::claude_client::UsageDataBucket;
 fn main() -> miette::Result<()> {
     let cli = Cli::parse();
     let args_signature = create_args_signature(&cli)?;
+    let cache_file_path = create_cache_file_path(&args_signature)?;
 
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
@@ -30,34 +31,41 @@ fn main() -> miette::Result<()> {
     let zoned_now = Zoned::now();
 
     // System time is a naked utc time.
-    // So, use this to work with the system, cache retrival.
+    // So, we have to convert it back to the utc.
     let system_now = &zoned_now.in_tz("UTC").into_diagnostic()?.timestamp();
 
-    // I am going to make this an input argument in the future.
     let ttl_minutes: i64 = cli.ttl_minutes;
 
-    let cache_dir = dirs::cache_dir()
-        .ok_or_else(|| miette!("Could not find a cache directory."))?
-        .join("meter")
-        .join("claude");
-
-    // I will improve this later. I have some ideas about it.
-    let cache_file_name = format!("cache_{}", args_signature);
-    let cache_file_path = &cache_dir.join(cache_file_name);
-
     let output_message: String =
-        match io::cache::try_retrieve_cache(cache_file_path, &ttl_minutes, system_now) {
+        match io::cache::try_retrieve_cache(&cache_file_path, &ttl_minutes, system_now) {
             // Cache hit. The content is ready to use.
-            Ok(Some(string)) => string,
+            Ok(Some(cached_string)) => cached_string,
 
-            // No cache, expired, or it doesn't exist, so it's okay to refresh.
+            // Cache failed to load somehow.
+            //
+            // This program must not be run without a cache.
+            //
+            // It's meant to be used inside a tmux plugin, which may be invoked repeatedly
+            // based on its refresh rate (I don't know the exact number, but I am sure it must be
+            // very frequent), in multiple instances.
+            //
+            // The result of the command has to be memoized, and when that very command is asked
+            // again, we return the result immediately from the filesystem.
+            // That was the initial design. I really have no idea what it would be in the
+            // real implementation. Let's hope it works!
+            //
+            // So, we can't let it silently break inside.
+            // That's why I have to make this explicit.
+            Err(e) => {
+                return Err(e).wrap_err(
+                    "Cache failed to load. Aborting to avoid the API ban (you're welcome).",
+                );
+            }
+
+            // No cache, expired, or doesn't exist, so it's okay to refresh.
+            // The actual application logic happens here.
             Ok(None) => {
-                // Improve ergonomics by auto detecting terminals.
-                // This prevents the fancy spinner from flooding pipes or breaking tmux status bars.
-                // This saves users from having to mandatory, constantly append `--no-animate`.
-                if !cli.no_animate && std::io::stdout().is_terminal() {
-                    spinner_container = create_spinner();
-                }
+                spinner_container = create_spinner_unless_no_terminal_or(cli.no_animate);
 
                 let days_ago = cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
@@ -109,30 +117,11 @@ fn main() -> miette::Result<()> {
                     },
                 }
             }
-
-            // This program must not be run without a cache.
-            //
-            // It's meant to be used inside a tmux plugin, which may be invoked repeatedly
-            // based on its refresh rate (I don't know the exact number, but I am sure it must be
-            // very frequent), in multiple instances.
-            //
-            // The result of the command has to be memoized, and when that very command is asked
-            // again, we return the result immediately from the filesystem.
-            // That was the initial design. I really have no idea what it would be in the
-            // real implementation. Let's hope it works!
-            //
-            // So, we can't let it silently break inside.
-            // That's why I have to make this explicit.
-            Err(e) => {
-                return Err(e).wrap_err(
-                    "Cache failed to load. Aborting to avoid the API ban (you're welcome).",
-                );
-            }
         };
 
     // A simple way to check the output validity, for now.
     if !output_message.is_empty() {
-        io::cache::try_write_cache(cache_file_path, &output_message, &ttl_minutes, system_now)?;
+        io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
     // Print the result.
@@ -146,6 +135,9 @@ fn main() -> miette::Result<()> {
 
 // private
 
+/// Formats a number as currency or plain text.
+///
+/// Formats it as USD with 2 decimal places (e.g., "$123.45").
 fn format(calculated_number: f64, no_format: bool) -> String {
     if no_format {
         return calculated_number.to_string();
@@ -154,10 +146,27 @@ fn format(calculated_number: f64, no_format: bool) -> String {
     format!("${:.2}", calculated_number)
 }
 
-fn create_spinner() -> Option<Spinner> {
+/// Attempts to create a spinner based on user preference and terminal capabilities.
+///
+/// This improves ergonomics by auto-detecting terminals, which prevents the fancy
+/// spinner from flooding pipes or breaking tmux status bars. This saves users
+/// from having to mandatory, constantly append `--no-animate`.
+//
+// Note: Just wanted to be clear about the dependency, so I encoded it in the name.
+fn create_spinner_unless_no_terminal_or(no_animate: bool) -> Option<Spinner> {
+    if no_animate || !std::io::stdout().is_terminal() {
+        return None;
+    }
+
     Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue))
 }
 
+/// Hashes serialized arguments into a cache filename.
+///
+/// Uses XxHash64 to produce a fast, deterministic hash of the input,
+/// then formats it as hexadecimal.
+///
+/// Returns a short string like "7a2f4c91b0e3".
 fn generate_cache_filename(serialized_args: &str) -> String {
     let mut hasher = XxHash64::default();
 
@@ -168,6 +177,10 @@ fn generate_cache_filename(serialized_args: &str) -> String {
     format!("{:x}", hashed)
 }
 
+/// Generates a cache key from CLI arguments.
+///
+/// Serializes the provided CLI args to JSON and produces a cache filename
+/// that uniquely identifies the command.
 fn create_args_signature(cli: &Cli) -> miette::Result<String> {
     let serialized = serde_json::to_string(cli)
         .into_diagnostic()
@@ -178,6 +191,10 @@ fn create_args_signature(cli: &Cli) -> miette::Result<String> {
     Ok(file_name)
 }
 
+/// Calculates the start of a day N days ago.
+///
+/// Subtracts `days_ago` from the given time, then returns midnight
+/// of that resulting date in the same timezone.
 fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zoned> {
     let time_span = Span::new().days(days_ago);
 
@@ -189,6 +206,22 @@ fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zone
         .wrap_err("Could not resolve the start of the day (midnight) for this date/timezone")?;
 
     Ok(target_start_of_day)
+}
+
+/// Compose the platform-specific cache file path for a given argument signature.
+///
+/// The resulting path follows the pattern:
+/// `{cache_dir}/meter/claude/cache_7a2f4c91b0e3`
+fn create_cache_file_path(args_signature: &str) -> miette::Result<std::path::PathBuf> {
+    let dir = dirs::cache_dir()
+        .ok_or_else(|| miette!("Could not find a cache directory."))?
+        .join("meter")
+        .join("claude");
+
+    let file_name = format!("cache_{}", args_signature);
+    let file_path = dir.join(file_name);
+
+    Ok(file_path)
 }
 
 impl Cli {
