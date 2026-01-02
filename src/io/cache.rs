@@ -3,6 +3,8 @@ use miette::IntoDiagnostic;
 
 use std::fs;
 
+/// Retrieves cached content if it exists and hasn't expired.
+/// Returns `None` if the file doesn't exist or has exceeded its TTL.
 pub fn try_retrieve_cache(
     cache_file_path: &std::path::Path,
     ttl: &i64,
@@ -21,6 +23,8 @@ pub fn try_retrieve_cache(
     Ok(content)
 }
 
+/// Writes content to the cache file, but only if the cache is expired or doesn't exist.
+/// Skips writing if the cache is still alive to preserve its modification time.
 pub fn try_write_cache(
     cache_file_path: &std::path::Path,
     body_string: &str,
@@ -47,6 +51,7 @@ pub fn try_write_cache(
     Ok(())
 }
 
+/// Determines if a cache file has exceeded its time-to-live based on modification time.
 fn is_cache_expired(
     cache_file_path: &std::path::Path,
     system_now: &Timestamp,

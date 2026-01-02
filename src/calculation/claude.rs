@@ -7,14 +7,16 @@ use crate::config::pricing_table::{PRICING, PricingTable};
 use crate::error::Error;
 use crate::io::claude_client::{UsageDataBucket, UsageResult};
 
+/// Calculates total cost in dollars across all buckets.
+/// Returns an error if a model's price is missing from the lookup table.
 pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> miette::Result<f64> {
     flatten_usage_buckets(usages)
         .iter()
         .try_fold(0.0, |summed_result, result_entry| {
             let pricing = find_price(result_entry)?;
 
-            // Collect every input tokens.
-            // No ephemeral input cache thing because I don't know what it is - -'
+            // Honest note: Ephemeral input cache is ignored here
+            // because I don't know how the DTO handles it yet. - -'
             let total_input_tokens =
                 result_entry.uncached_input_tokens + result_entry.cache_read_input_tokens;
 
@@ -29,6 +31,7 @@ pub fn calculate_total_cost(usages: Vec<UsageDataBucket>) -> miette::Result<f64>
         })
 }
 
+/// Simple sum of all input and output tokens across all buckets.
 pub fn sum_total_tokens(usages: Vec<UsageDataBucket>) -> u64 {
     flatten_usage_buckets(usages)
         .iter()
@@ -42,6 +45,7 @@ pub fn sum_total_tokens(usages: Vec<UsageDataBucket>) -> u64 {
         })
 }
 
+/// Aggregates total tokens grouped by model name, returned as CSV.
 pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> miette::Result<String> {
     let usage_results = flatten_usage_buckets(usages);
     let keyed_results = into_key_pairs(usage_results)?;
@@ -62,6 +66,8 @@ pub fn tokens_by_model_as_csv(usages: Vec<UsageDataBucket>) -> miette::Result<St
     grouped_to_csv(grouped_tokens)
 }
 
+/// Aggregates costs grouped by model name, returned as CSV.
+/// If `unformatted` is false, modifies keys to include cost for CLI plotting tools.
 pub fn costs_by_model_as_csv(
     usages: Vec<UsageDataBucket>,
     unformatted: bool,
@@ -72,7 +78,7 @@ pub fn costs_by_model_as_csv(
     let grouped_costs = keyed_results.into_iter().into_grouping_map().fold(
         0.0,
         |summed_result, group_key, result_entry| {
-            // Since keyed_results has validated the price existence in the table,
+            // Safety: Since `keyed_results` has validated the price existence in the table,
             // we can safely unwrap the pricing entry.
             let pricing = PRICING
                 .iter()
@@ -122,8 +128,6 @@ pub fn costs_by_model_as_csv(
 // private
 
 fn calculate_cost(tokens: u64, price_per_million: f64) -> f64 {
-    // Learning note: it must be converted here because the token is stored as an integer
-    // and the multiplier is a float.
     let tokens_in_millions = tokens as f64 / 1_000_000.0;
 
     tokens_in_millions * price_per_million

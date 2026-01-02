@@ -31,10 +31,9 @@ fn main() -> miette::Result<()> {
     let zoned_now = Zoned::now();
 
     // System time is a naked utc time.
-    // So, use this to work with the system, cache retrival.
+    // So, we have to convert it back to the utc.
     let system_now = &zoned_now.in_tz("UTC").into_diagnostic()?.timestamp();
 
-    // I am going to make this an input argument in the future.
     let ttl_minutes: i64 = cli.ttl_minutes;
 
     let output_message: String =
@@ -136,6 +135,9 @@ fn main() -> miette::Result<()> {
 
 // private
 
+/// Formats a number as currency or plain text.
+///
+/// Formats it as USD with 2 decimal places (e.g., "$123.45").
 fn format(calculated_number: f64, no_format: bool) -> String {
     if no_format {
         return calculated_number.to_string();
@@ -146,8 +148,8 @@ fn format(calculated_number: f64, no_format: bool) -> String {
 
 /// Attempts to create a spinner based on user preference and terminal capabilities.
 ///
-/// This improves ergonomics by auto-detecting terminals, which prevents the fancy 
-/// spinner from flooding pipes or breaking tmux status bars. This saves users 
+/// This improves ergonomics by auto-detecting terminals, which prevents the fancy
+/// spinner from flooding pipes or breaking tmux status bars. This saves users
 /// from having to mandatory, constantly append `--no-animate`.
 //
 // Note: Just wanted to be clear about the dependency, so I encoded it in the name.
@@ -159,6 +161,12 @@ fn create_spinner_unless_no_terminal_or(no_animate: bool) -> Option<Spinner> {
     Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue))
 }
 
+/// Hashes serialized arguments into a cache filename.
+///
+/// Uses XxHash64 to produce a fast, deterministic hash of the input,
+/// then formats it as hexadecimal.
+///
+/// Returns a short string like "7a2f4c91b0e3".
 fn generate_cache_filename(serialized_args: &str) -> String {
     let mut hasher = XxHash64::default();
 
@@ -169,6 +177,10 @@ fn generate_cache_filename(serialized_args: &str) -> String {
     format!("{:x}", hashed)
 }
 
+/// Generates a cache key from CLI arguments.
+///
+/// Serializes the provided CLI args to JSON and produces a cache filename
+/// that uniquely identifies the command.
 fn create_args_signature(cli: &Cli) -> miette::Result<String> {
     let serialized = serde_json::to_string(cli)
         .into_diagnostic()
@@ -179,6 +191,10 @@ fn create_args_signature(cli: &Cli) -> miette::Result<String> {
     Ok(file_name)
 }
 
+/// Calculates the start of a day N days ago.
+///
+/// Subtracts `days_ago` from the given time, then returns midnight
+/// of that resulting date in the same timezone.
 fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zoned> {
     let time_span = Span::new().days(days_ago);
 

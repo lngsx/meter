@@ -1,4 +1,3 @@
-
 use jiff::Zoned;
 
 use miette::IntoDiagnostic;
@@ -12,7 +11,6 @@ const USAGE_REPORT_ENDPOINT: &str =
     "https://api.anthropic.com/v1/organizations/usage_report/messages";
 const GAP_TIME_BETWEEN_FETCH_IN_SEC: u64 = 5;
 
-/// The time value must be ready to use before it goes into this function.
 pub fn fetch(
     key: &str,
     starting_at: &Zoned,
