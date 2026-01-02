@@ -21,6 +21,46 @@ pub struct SpinnerContainer {
     instance: Option<Spinner>,
 }
 
+impl SpinnerContainer {
+    // Do this because when it hits the cache, the spinner is not needed, and the spinner api
+    // itself doesn't provide a way to create an empty instance, so I have to use this trick.
+    // By declaring an empty option beforehand, I can assign the spinner to it as needed.
+    fn new() -> Self {
+        SpinnerContainer { instance: None }
+    }
+
+    fn stop_with_message(mut self, message: &str) {
+        // Note that it has to take ownership to prevent double stopping.
+        match self.instance.take() {
+            Some(mut s) => s.stop_with_message(message),
+            None => println!("{}", message),
+        }
+    }
+
+    fn update_text(&mut self, message: String) {
+        if let Some(spinner) = self.instance.as_mut() {
+            spinner.update_text(message)
+        }
+    }
+
+    /// Attempts to create a spinner based on user preference and terminal capabilities.
+    ///
+    /// This improves ergonomics by auto-detecting terminals, which prevents the fancy
+    /// spinner from flooding pipes or breaking tmux status bars. This saves users
+    /// from having to mandatory, constantly append `--no-animate`.
+    //
+    // Note: Just wanted to be clear about the dependency, so I encoded it in the name.
+    fn create_spinner_unless_no_terminal_or(self, no_animate: bool) -> Self {
+        if no_animate || !std::io::stdout().is_terminal() {
+            return SpinnerContainer { instance: None };
+        }
+
+        SpinnerContainer {
+            instance: Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue)),
+        }
+    }
+}
+
 impl Drop for SpinnerContainer {
     fn drop(&mut self) {
         if let Some(s) = self.instance.as_mut() {
@@ -36,10 +76,7 @@ fn main() -> miette::Result<()> {
     let args_signature = create_args_signature(&cli)?;
     let cache_file_path = create_cache_file_path(&args_signature)?;
 
-    // Do this because when it hits the cache, the spinner is not needed, and the spinner api
-    // itself doesn't provide a way to create an empty instance, so I have to use this trick.
-    // By declaring an empty option beforehand, I can assign the spinner to it as needed.
-    let mut spinner_container = SpinnerContainer { instance: None };
+    let mut spinner_container = SpinnerContainer::new();
 
     // Use this to make an api call, it has to be aligned with my time.
     let zoned_now = Zoned::now();
@@ -79,7 +116,8 @@ fn main() -> miette::Result<()> {
             // No cache, expired, or doesn't exist, so it's okay to refresh.
             // The actual application logic happens here.
             Ok(None) => {
-                spinner_container = create_spinner_unless_no_terminal_or(cli.no_animate);
+                spinner_container =
+                    spinner_container.create_spinner_unless_no_terminal_or(cli.no_animate);
 
                 let days_ago = cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
@@ -138,12 +176,7 @@ fn main() -> miette::Result<()> {
         io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
-    // Print the result.
-    // Note that it has to take ownership to prevent double stopping.
-    match spinner_container.instance.take() {
-        Some(mut s) => s.stop_with_message(&output_message),
-        None => println!("{}", output_message),
-    }
+    spinner_container.stop_with_message(&output_message);
 
     Ok(())
 }
@@ -159,23 +192,6 @@ fn format(calculated_number: f64, no_format: bool) -> String {
     }
 
     format!("${:.2}", calculated_number)
-}
-
-/// Attempts to create a spinner based on user preference and terminal capabilities.
-///
-/// This improves ergonomics by auto-detecting terminals, which prevents the fancy
-/// spinner from flooding pipes or breaking tmux status bars. This saves users
-/// from having to mandatory, constantly append `--no-animate`.
-//
-// Note: Just wanted to be clear about the dependency, so I encoded it in the name.
-fn create_spinner_unless_no_terminal_or(no_animate: bool) -> SpinnerContainer {
-    if no_animate || !std::io::stdout().is_terminal() {
-        return SpinnerContainer { instance: None };
-    }
-
-    SpinnerContainer {
-        instance: Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue)),
-    }
 }
 
 /// Hashes serialized arguments into a cache filename.

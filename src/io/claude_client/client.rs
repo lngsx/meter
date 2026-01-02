@@ -34,9 +34,7 @@ pub fn fetch(
 
     while has_more {
         // First things first, give users something to look at.
-        if let Some(spinner) = spinner_container.instance.as_mut() {
-            spinner.update_text(progress_text(page_number))
-        }
+        spinner_container.update_text(progress_text(page_number));
 
         if page_number > 1 {
             wait();
