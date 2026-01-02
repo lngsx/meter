@@ -1,7 +1,7 @@
 use jiff::Zoned;
 
 use miette::IntoDiagnostic;
-use spinoff::Spinner;
+// use spinoff::Spinner;
 
 use super::dtos::{MessagesUsageReport, UsageDataBucket};
 
@@ -15,7 +15,7 @@ pub fn fetch(
     key: &str,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
-    spinner_container: &mut Option<Spinner>,
+    spinner_container: &mut crate::SpinnerContainer,
 ) -> miette::Result<Vec<UsageDataBucket>> {
     // RFC 3339, this API expects this format.
     let starting_at_timestamp = starting_at.timestamp().to_string();
@@ -34,7 +34,7 @@ pub fn fetch(
 
     while has_more {
         // First things first, give users something to look at.
-        if let Some(spinner) = spinner_container.as_mut() {
+        if let Some(spinner) = spinner_container.instance.as_mut() {
             spinner.update_text(progress_text(page_number))
         }
 
