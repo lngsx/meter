@@ -12,8 +12,27 @@ impl Display {
     pub fn new(no_animate: bool) -> Self {
         Self {
             no_animate,
-            spinner: SpinnerContainer::new()
+            spinner: SpinnerContainer::new(),
         }
+    }
+
+    /// Automatically detect both environment and user input to start a spinner, accordingly.
+    // Try to stick to the original implementation for now.
+    pub fn maybe_start_spin(&mut self) {
+        let no_animate = self.no_animate;
+        let new_spinner_container = self
+            .spinner
+            .create_spinner_unless_no_terminal_or(no_animate);
+
+        self.spinner = new_spinner_container;
+    }
+
+    pub fn stop_spin_with_message(&mut self, message: &str) {
+        self.spinner.stop_with_message(message);
+    }
+
+    pub fn update_spin_message(&mut self, message: String) {
+        self.spinner.update_text(message);
     }
 }
 
@@ -27,11 +46,11 @@ impl SpinnerContainer {
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
     // By declaring an empty option beforehand, I can assign the spinner to it as needed.
-    pub fn new() -> Self {
+    fn new() -> Self {
         SpinnerContainer { instance: None }
     }
 
-    pub fn stop_with_message(&mut self, message: &str) {
+    fn stop_with_message(&mut self, message: &str) {
         // Note that it has to take ownership to prevent double stopping.
         match self.instance.take() {
             Some(mut s) => s.stop_with_message(message),
@@ -39,7 +58,7 @@ impl SpinnerContainer {
         }
     }
 
-    pub fn update_text(&mut self, message: String) {
+    fn update_text(&mut self, message: String) {
         if let Some(spinner) = self.instance.as_mut() {
             spinner.update_text(message)
         }
@@ -52,7 +71,7 @@ impl SpinnerContainer {
     /// from having to mandatory, constantly append `--no-animate`.
     //
     // Note: Just wanted to be clear about the dependency, so I encoded it in the name.
-    pub fn create_spinner_unless_no_terminal_or(&mut self, no_animate: bool) -> Self {
+    fn create_spinner_unless_no_terminal_or(&mut self, no_animate: bool) -> Self {
         if no_animate || !std::io::stdout().is_terminal() {
             return SpinnerContainer { instance: None };
         }

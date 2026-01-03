@@ -58,7 +58,7 @@ fn main() -> miette::Result<()> {
             // No cache, expired, or doesn't exist, so it's okay to refresh.
             // The actual application logic happens here.
             Ok(None) => {
-                app.maybe_start_spin();
+                app.display.maybe_start_spin();
 
                 let days_ago = app.cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
@@ -118,7 +118,7 @@ fn main() -> miette::Result<()> {
         io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
-    app.stop_spin_with_message(&output_message);
+    app.display.stop_spin_with_message(&output_message);
 
     Ok(())
 }

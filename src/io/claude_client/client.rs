@@ -34,7 +34,7 @@ pub fn fetch(
 
     while has_more {
         // First things first, give users something to look at.
-        app.update_spin_message(progress_text(page_number));
+        app.display.update_spin_message(progress_text(page_number));
 
         if page_number > 1 {
             wait();
