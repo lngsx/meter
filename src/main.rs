@@ -64,11 +64,8 @@ fn main() -> miette::Result<()> {
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
                 // Everyone uses the same usages.
-                let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
-                    &app,
-                    &report_start,
-                    None,
-                )?;
+                let usages: Vec<UsageDataBucket> =
+                    io::claude_client::fetch(&app, &report_start, None)?;
 
                 match &app.cli.command {
                     // meter raw.

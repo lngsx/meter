@@ -1,5 +1,3 @@
-// use clap::Parser;
-
 use crate::cli::Cli;
 use crate::display::Display;
 
@@ -13,7 +11,7 @@ impl App {
         let no_animate_flag = cli.no_animate.to_owned();
 
         App {
-            cli: cli,
+            cli,
             display: Display::new(no_animate_flag),
         }
     }
