@@ -1,8 +1,7 @@
 use jiff::Zoned;
-
 use miette::IntoDiagnostic;
-// use spinoff::Spinner;
 
+use crate::app::App;
 use super::dtos::{MessagesUsageReport, UsageDataBucket};
 
 const API_VERSION: &str = "2023-06-01";
@@ -12,7 +11,7 @@ const USAGE_REPORT_ENDPOINT: &str =
 const GAP_TIME_BETWEEN_FETCH_IN_SEC: u64 = 5;
 
 pub fn fetch(
-    app: &mut crate::App,
+    app: &mut App,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
 ) -> miette::Result<Vec<UsageDataBucket>> {
