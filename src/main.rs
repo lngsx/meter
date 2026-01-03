@@ -15,7 +15,8 @@ use cli::{Cli, Commands, Grouping, Metric, SumArgs};
 use io::claude_client::UsageDataBucket;
 
 fn main() -> miette::Result<()> {
-    let mut app = app::App::new();
+    let cli = Cli::new();
+    let app = app::App::new(cli);
     let args_signature = create_args_signature(&app.cli)?;
     let cache_file_path = create_cache_file_path(&args_signature)?;
 
@@ -57,17 +58,14 @@ fn main() -> miette::Result<()> {
             // No cache, expired, or doesn't exist, so it's okay to refresh.
             // The actual application logic happens here.
             Ok(None) => {
-                app.maybe_start_spin();
+                app.display.maybe_start_spin();
 
                 let days_ago = app.cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
                 // Everyone uses the same usages.
-                let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
-                    &mut app,
-                    &report_start,
-                    None,
-                )?;
+                let usages: Vec<UsageDataBucket> =
+                    io::claude_client::fetch(&app, &report_start, None)?;
 
                 match &app.cli.command {
                     // meter raw.
@@ -117,7 +115,7 @@ fn main() -> miette::Result<()> {
         io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
-    app.stop_spin_with_message(&output_message);
+    app.display.stop_spin_with_message(&output_message);
 
     Ok(())
 }

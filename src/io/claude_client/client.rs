@@ -1,8 +1,8 @@
 use jiff::Zoned;
 use miette::IntoDiagnostic;
 
-use crate::app::App;
 use super::dtos::{MessagesUsageReport, UsageDataBucket};
+use crate::app::App;
 
 const API_VERSION: &str = "2023-06-01";
 const BUCKET_WIDTH: &str = "1h";
@@ -11,11 +11,11 @@ const USAGE_REPORT_ENDPOINT: &str =
 const GAP_TIME_BETWEEN_FETCH_IN_SEC: u64 = 5;
 
 pub fn fetch(
-    app: &mut App,
+    ctx: &App,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
 ) -> miette::Result<Vec<UsageDataBucket>> {
-    let key = app.cli.try_get_anthropic_key()?.to_owned();
+    let key = ctx.cli.try_get_anthropic_key()?.to_owned();
 
     // RFC 3339, this API expects this format.
     let starting_at_timestamp = starting_at.timestamp().to_string();
@@ -34,7 +34,7 @@ pub fn fetch(
 
     while has_more {
         // First things first, give users something to look at.
-        app.update_spin_message(progress_text(page_number));
+        ctx.display.update_spin_message(progress_text(page_number));
 
         if page_number > 1 {
             wait();
