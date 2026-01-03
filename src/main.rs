@@ -216,7 +216,6 @@ fn main() -> miette::Result<()> {
         io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
-    // app.spinner_container.stop_with_message(&output_message);
     app.stop_spin_with_message(&output_message);
 
     Ok(())

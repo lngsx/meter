@@ -13,10 +13,8 @@ const GAP_TIME_BETWEEN_FETCH_IN_SEC: u64 = 5;
 
 pub fn fetch(
     app: &mut crate::App,
-    // key: &str,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
-    // spinner_container: &mut crate::SpinnerContainer,
 ) -> miette::Result<Vec<UsageDataBucket>> {
     let key = app.cli.try_get_anthropic_key()?.to_owned();
 
@@ -37,9 +35,6 @@ pub fn fetch(
 
     while has_more {
         // First things first, give users something to look at.
-        // spinner_container.update_text(progress_text(page_number));
-        // app.spinner_container
-        //     .update_text(progress_text(page_number));
         app.update_spin_message(progress_text(page_number));
 
         if page_number > 1 {
