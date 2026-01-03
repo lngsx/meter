@@ -1,5 +1,3 @@
-// extern crate dirs;
-
 mod app;
 mod calculation;
 mod cli;
@@ -18,11 +16,8 @@ use io::claude_client::UsageDataBucket;
 
 fn main() -> miette::Result<()> {
     let mut app = app::App::new();
-    // let cli = Cli::parse();
     let args_signature = create_args_signature(&app.cli)?;
     let cache_file_path = create_cache_file_path(&args_signature)?;
-
-    // let mut spinner_container = SpinnerContainer::new();
 
     // Use this to make an api call, it has to be aligned with my time.
     let zoned_now = Zoned::now();
@@ -62,10 +57,6 @@ fn main() -> miette::Result<()> {
             // No cache, expired, or doesn't exist, so it's okay to refresh.
             // The actual application logic happens here.
             Ok(None) => {
-                // app.spinner_container = app
-                //     .spinner_container
-                //     .create_spinner_unless_no_terminal_or(app.cli.no_animate);
-
                 app.maybe_start_spin();
 
                 let days_ago = app.cli.try_parse_since()? as i64;
@@ -74,10 +65,8 @@ fn main() -> miette::Result<()> {
                 // Everyone uses the same usages.
                 let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
                     &mut app,
-                    // app.cli.try_get_anthropic_key()?,
                     &report_start,
                     None,
-                    // &mut app.spinner_container,
                 )?;
 
                 match &app.cli.command {
