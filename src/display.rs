@@ -1,6 +1,24 @@
 use spinoff::{Color, Spinner, spinners};
 use std::io::IsTerminal;
 
+// Display
+
+pub struct Display {
+    pub spinner: SpinnerContainer,
+    no_animate: bool,
+}
+
+impl Display {
+    pub fn new(no_animate: bool) -> Self {
+        Self {
+            no_animate,
+            spinner: SpinnerContainer::new()
+        }
+    }
+}
+
+// End of Display
+
 pub struct SpinnerContainer {
     instance: Option<Spinner>,
 }

@@ -1,8 +1,8 @@
 use jiff::Zoned;
 use miette::IntoDiagnostic;
 
-use crate::app::App;
 use super::dtos::{MessagesUsageReport, UsageDataBucket};
+use crate::app::App;
 
 const API_VERSION: &str = "2023-06-01";
 const BUCKET_WIDTH: &str = "1h";

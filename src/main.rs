@@ -15,7 +15,8 @@ use cli::{Cli, Commands, Grouping, Metric, SumArgs};
 use io::claude_client::UsageDataBucket;
 
 fn main() -> miette::Result<()> {
-    let mut app = app::App::new();
+    let cli = Cli::new();
+    let mut app = app::App::new(cli);
     let args_signature = create_args_signature(&app.cli)?;
     let cache_file_path = create_cache_file_path(&args_signature)?;
 

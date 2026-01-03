@@ -4,6 +4,11 @@ use serde::Serialize;
 use crate::error::Error;
 
 impl Cli {
+    /// Convenience constructor to avoid redundant `Parser` imports in main.
+    pub fn new() -> Self {
+        Cli::parse()
+    }
+
     // A poor man's solution for a credentials store.
     // I will later come back to it to improve if I add more providers.
     // Just platforming it now so I can understand the big picture easily in the future.
