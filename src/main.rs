@@ -17,6 +17,29 @@ use twox_hash::XxHash64;
 use error::Error;
 use io::claude_client::UsageDataBucket;
 
+pub struct App {
+    cli: Cli,
+    spinner_container: SpinnerContainer,
+}
+
+impl App {
+    fn new() -> Self {
+        App {
+            cli: Cli::parse(),
+            spinner_container: SpinnerContainer::new(),
+        }
+    }
+
+    fn maybe_start_spin(&mut self) {
+        let no_animate = self.cli.no_animate;
+        let new_spinner_container = self
+            .spinner_container
+            .create_spinner_unless_no_terminal_or(no_animate);
+
+        self.spinner_container = new_spinner_container;
+    }
+}
+
 pub struct SpinnerContainer {
     instance: Option<Spinner>,
 }
@@ -50,7 +73,7 @@ impl SpinnerContainer {
     /// from having to mandatory, constantly append `--no-animate`.
     //
     // Note: Just wanted to be clear about the dependency, so I encoded it in the name.
-    fn create_spinner_unless_no_terminal_or(self, no_animate: bool) -> Self {
+    fn create_spinner_unless_no_terminal_or(&mut self, no_animate: bool) -> Self {
         if no_animate || !std::io::stdout().is_terminal() {
             return SpinnerContainer { instance: None };
         }
@@ -72,11 +95,12 @@ impl Drop for SpinnerContainer {
 }
 
 fn main() -> miette::Result<()> {
-    let cli = Cli::parse();
-    let args_signature = create_args_signature(&cli)?;
+    let mut app = App::new();
+    // let cli = Cli::parse();
+    let args_signature = create_args_signature(&app.cli)?;
     let cache_file_path = create_cache_file_path(&args_signature)?;
 
-    let mut spinner_container = SpinnerContainer::new();
+    // let mut spinner_container = SpinnerContainer::new();
 
     // Use this to make an api call, it has to be aligned with my time.
     let zoned_now = Zoned::now();
@@ -85,7 +109,7 @@ fn main() -> miette::Result<()> {
     // So, we have to convert it back to the utc.
     let system_now = &zoned_now.in_tz("UTC").into_diagnostic()?.timestamp();
 
-    let ttl_minutes: i64 = cli.ttl_minutes;
+    let ttl_minutes: i64 = app.cli.ttl_minutes;
 
     let output_message: String =
         match io::cache::try_retrieve_cache(&cache_file_path, &ttl_minutes, system_now) {
@@ -116,24 +140,27 @@ fn main() -> miette::Result<()> {
             // No cache, expired, or doesn't exist, so it's okay to refresh.
             // The actual application logic happens here.
             Ok(None) => {
-                spinner_container =
-                    spinner_container.create_spinner_unless_no_terminal_or(cli.no_animate);
+                // app.spinner_container = app
+                //     .spinner_container
+                //     .create_spinner_unless_no_terminal_or(app.cli.no_animate);
 
-                let days_ago = cli.try_parse_since()? as i64;
+                app.maybe_start_spin();
+
+                let days_ago = app.cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
                 // Everyone uses the same usages.
                 let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
-                    cli.try_get_anthropic_key()?,
+                    app.cli.try_get_anthropic_key()?,
                     &report_start,
                     None,
-                    &mut spinner_container,
+                    &mut app.spinner_container,
                 )?;
 
-                match &cli.command {
+                match &app.cli.command {
                     // meter raw.
                     Commands::Raw => {
-                        if cli.unformatted {
+                        if app.cli.unformatted {
                             serde_json::to_string(&usages).into_diagnostic()?
                         } else {
                             serde_json::to_string_pretty(&usages).into_diagnostic()?
@@ -149,13 +176,15 @@ fn main() -> miette::Result<()> {
                         } => {
                             let summed = calculation::claude::calculate_total_cost(usages)?;
 
-                            format(summed, cli.unformatted)
+                            format(summed, app.cli.unformatted)
                         }
 
                         SumArgs {
                             metric: Metric::Cost,
                             group_by: Some(Grouping::Model),
-                        } => calculation::claude::costs_by_model_as_csv(usages, cli.unformatted)?,
+                        } => {
+                            calculation::claude::costs_by_model_as_csv(usages, app.cli.unformatted)?
+                        }
 
                         SumArgs {
                             metric: Metric::Tokens,
@@ -176,7 +205,7 @@ fn main() -> miette::Result<()> {
         io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
-    spinner_container.stop_with_message(&output_message);
+    app.spinner_container.stop_with_message(&output_message);
 
     Ok(())
 }
