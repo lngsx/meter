@@ -30,6 +30,8 @@ impl App {
         }
     }
 
+    /// Automatically detect both environment and user input to start a spinner, accordingly.
+    // Try to stick to the original implementation for now.
     fn maybe_start_spin(&mut self) {
         let no_animate = self.cli.no_animate;
         let new_spinner_container = self
@@ -37,6 +39,14 @@ impl App {
             .create_spinner_unless_no_terminal_or(no_animate);
 
         self.spinner_container = new_spinner_container;
+    }
+
+    fn stop_spin_with_message(&mut self, message: &str) {
+        self.spinner_container.stop_with_message(message);
+    }
+
+    fn update_spin_message(&mut self, message: String) {
+        self.spinner_container.update_text(message);
     }
 }
 
@@ -52,7 +62,7 @@ impl SpinnerContainer {
         SpinnerContainer { instance: None }
     }
 
-    fn stop_with_message(mut self, message: &str) {
+    fn stop_with_message(&mut self, message: &str) {
         // Note that it has to take ownership to prevent double stopping.
         match self.instance.take() {
             Some(mut s) => s.stop_with_message(message),
@@ -151,10 +161,11 @@ fn main() -> miette::Result<()> {
 
                 // Everyone uses the same usages.
                 let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
-                    app.cli.try_get_anthropic_key()?,
+                    &mut app,
+                    // app.cli.try_get_anthropic_key()?,
                     &report_start,
                     None,
-                    &mut app.spinner_container,
+                    // &mut app.spinner_container,
                 )?;
 
                 match &app.cli.command {
@@ -205,7 +216,8 @@ fn main() -> miette::Result<()> {
         io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
-    app.spinner_container.stop_with_message(&output_message);
+    // app.spinner_container.stop_with_message(&output_message);
+    app.stop_spin_with_message(&output_message);
 
     Ok(())
 }
