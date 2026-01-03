@@ -11,7 +11,7 @@ const USAGE_REPORT_ENDPOINT: &str =
 const GAP_TIME_BETWEEN_FETCH_IN_SEC: u64 = 5;
 
 pub fn fetch(
-    ctx: &mut App,
+    ctx: &App,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
 ) -> miette::Result<Vec<UsageDataBucket>> {

@@ -16,7 +16,7 @@ use io::claude_client::UsageDataBucket;
 
 fn main() -> miette::Result<()> {
     let cli = Cli::new();
-    let mut app = app::App::new(cli);
+    let app = app::App::new(cli);
     let args_signature = create_args_signature(&app.cli)?;
     let cache_file_path = create_cache_file_path(&args_signature)?;
 
@@ -65,7 +65,7 @@ fn main() -> miette::Result<()> {
 
                 // Everyone uses the same usages.
                 let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
-                    &mut app,
+                    &app,
                     &report_start,
                     None,
                 )?;
