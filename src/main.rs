@@ -17,15 +17,100 @@ use twox_hash::XxHash64;
 use error::Error;
 use io::claude_client::UsageDataBucket;
 
-fn main() -> miette::Result<()> {
-    let cli = Cli::parse();
-    let args_signature = create_args_signature(&cli)?;
-    let cache_file_path = create_cache_file_path(&args_signature)?;
+pub struct App {
+    cli: Cli,
+    spinner_container: SpinnerContainer,
+}
 
+impl App {
+    fn new() -> Self {
+        App {
+            cli: Cli::parse(),
+            spinner_container: SpinnerContainer::new(),
+        }
+    }
+
+    /// Automatically detect both environment and user input to start a spinner, accordingly.
+    // Try to stick to the original implementation for now.
+    fn maybe_start_spin(&mut self) {
+        let no_animate = self.cli.no_animate;
+        let new_spinner_container = self
+            .spinner_container
+            .create_spinner_unless_no_terminal_or(no_animate);
+
+        self.spinner_container = new_spinner_container;
+    }
+
+    fn stop_spin_with_message(&mut self, message: &str) {
+        self.spinner_container.stop_with_message(message);
+    }
+
+    fn update_spin_message(&mut self, message: String) {
+        self.spinner_container.update_text(message);
+    }
+}
+
+pub struct SpinnerContainer {
+    instance: Option<Spinner>,
+}
+
+impl SpinnerContainer {
     // Do this because when it hits the cache, the spinner is not needed, and the spinner api
     // itself doesn't provide a way to create an empty instance, so I have to use this trick.
     // By declaring an empty option beforehand, I can assign the spinner to it as needed.
-    let mut spinner_container: Option<Spinner> = None;
+    fn new() -> Self {
+        SpinnerContainer { instance: None }
+    }
+
+    fn stop_with_message(&mut self, message: &str) {
+        // Note that it has to take ownership to prevent double stopping.
+        match self.instance.take() {
+            Some(mut s) => s.stop_with_message(message),
+            None => println!("{}", message),
+        }
+    }
+
+    fn update_text(&mut self, message: String) {
+        if let Some(spinner) = self.instance.as_mut() {
+            spinner.update_text(message)
+        }
+    }
+
+    /// Attempts to create a spinner based on user preference and terminal capabilities.
+    ///
+    /// This improves ergonomics by auto-detecting terminals, which prevents the fancy
+    /// spinner from flooding pipes or breaking tmux status bars. This saves users
+    /// from having to mandatory, constantly append `--no-animate`.
+    //
+    // Note: Just wanted to be clear about the dependency, so I encoded it in the name.
+    fn create_spinner_unless_no_terminal_or(&mut self, no_animate: bool) -> Self {
+        if no_animate || !std::io::stdout().is_terminal() {
+            return SpinnerContainer { instance: None };
+        }
+
+        SpinnerContainer {
+            instance: Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue)),
+        }
+    }
+}
+
+impl Drop for SpinnerContainer {
+    fn drop(&mut self) {
+        if let Some(s) = self.instance.as_mut() {
+            // I don't know why .clear() doesn't work, and I didn't bother
+            // to do it correctly, so we have to live with this.
+            s.stop_with_message("");
+        }
+    }
+}
+
+fn main() -> miette::Result<()> {
+    let mut app = App::new();
+    // let cli = Cli::parse();
+    let args_signature = create_args_signature(&app.cli)?;
+    let cache_file_path = create_cache_file_path(&args_signature)?;
+
+    // let mut spinner_container = SpinnerContainer::new();
 
     // Use this to make an api call, it has to be aligned with my time.
     let zoned_now = Zoned::now();
@@ -34,7 +119,7 @@ fn main() -> miette::Result<()> {
     // So, we have to convert it back to the utc.
     let system_now = &zoned_now.in_tz("UTC").into_diagnostic()?.timestamp();
 
-    let ttl_minutes: i64 = cli.ttl_minutes;
+    let ttl_minutes: i64 = app.cli.ttl_minutes;
 
     let output_message: String =
         match io::cache::try_retrieve_cache(&cache_file_path, &ttl_minutes, system_now) {
@@ -65,23 +150,28 @@ fn main() -> miette::Result<()> {
             // No cache, expired, or doesn't exist, so it's okay to refresh.
             // The actual application logic happens here.
             Ok(None) => {
-                spinner_container = create_spinner_unless_no_terminal_or(cli.no_animate);
+                // app.spinner_container = app
+                //     .spinner_container
+                //     .create_spinner_unless_no_terminal_or(app.cli.no_animate);
 
-                let days_ago = cli.try_parse_since()? as i64;
+                app.maybe_start_spin();
+
+                let days_ago = app.cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
                 // Everyone uses the same usages.
                 let usages: Vec<UsageDataBucket> = io::claude_client::fetch(
-                    cli.try_get_anthropic_key()?,
+                    &mut app,
+                    // app.cli.try_get_anthropic_key()?,
                     &report_start,
                     None,
-                    &mut spinner_container,
+                    // &mut app.spinner_container,
                 )?;
 
-                match &cli.command {
+                match &app.cli.command {
                     // meter raw.
                     Commands::Raw => {
-                        if cli.unformatted {
+                        if app.cli.unformatted {
                             serde_json::to_string(&usages).into_diagnostic()?
                         } else {
                             serde_json::to_string_pretty(&usages).into_diagnostic()?
@@ -97,13 +187,15 @@ fn main() -> miette::Result<()> {
                         } => {
                             let summed = calculation::claude::calculate_total_cost(usages)?;
 
-                            format(summed, cli.unformatted)
+                            format(summed, app.cli.unformatted)
                         }
 
                         SumArgs {
                             metric: Metric::Cost,
                             group_by: Some(Grouping::Model),
-                        } => calculation::claude::costs_by_model_as_csv(usages, cli.unformatted)?,
+                        } => {
+                            calculation::claude::costs_by_model_as_csv(usages, app.cli.unformatted)?
+                        }
 
                         SumArgs {
                             metric: Metric::Tokens,
@@ -124,11 +216,7 @@ fn main() -> miette::Result<()> {
         io::cache::try_write_cache(&cache_file_path, &output_message, &ttl_minutes, system_now)?;
     }
 
-    // Print the result.
-    match spinner_container.as_mut() {
-        Some(s) => s.stop_with_message(&output_message),
-        None => println!("{}", output_message),
-    }
+    app.stop_spin_with_message(&output_message);
 
     Ok(())
 }
@@ -144,21 +232,6 @@ fn format(calculated_number: f64, no_format: bool) -> String {
     }
 
     format!("${:.2}", calculated_number)
-}
-
-/// Attempts to create a spinner based on user preference and terminal capabilities.
-///
-/// This improves ergonomics by auto-detecting terminals, which prevents the fancy
-/// spinner from flooding pipes or breaking tmux status bars. This saves users
-/// from having to mandatory, constantly append `--no-animate`.
-//
-// Note: Just wanted to be clear about the dependency, so I encoded it in the name.
-fn create_spinner_unless_no_terminal_or(no_animate: bool) -> Option<Spinner> {
-    if no_animate || !std::io::stdout().is_terminal() {
-        return None;
-    }
-
-    Some(Spinner::new(spinners::Dots, "Retrieving", Color::Blue))
 }
 
 /// Hashes serialized arguments into a cache filename.

@@ -1,7 +1,7 @@
 use jiff::Zoned;
 
 use miette::IntoDiagnostic;
-use spinoff::Spinner;
+// use spinoff::Spinner;
 
 use super::dtos::{MessagesUsageReport, UsageDataBucket};
 
@@ -12,11 +12,12 @@ const USAGE_REPORT_ENDPOINT: &str =
 const GAP_TIME_BETWEEN_FETCH_IN_SEC: u64 = 5;
 
 pub fn fetch(
-    key: &str,
+    app: &mut crate::App,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
-    spinner_container: &mut Option<Spinner>,
 ) -> miette::Result<Vec<UsageDataBucket>> {
+    let key = app.cli.try_get_anthropic_key()?.to_owned();
+
     // RFC 3339, this API expects this format.
     let starting_at_timestamp = starting_at.timestamp().to_string();
     let ending_at_timestamp = ending_at.map(|time| time.timestamp().to_string());
@@ -34,16 +35,14 @@ pub fn fetch(
 
     while has_more {
         // First things first, give users something to look at.
-        if let Some(spinner) = spinner_container.as_mut() {
-            spinner.update_text(progress_text(page_number))
-        }
+        app.update_spin_message(progress_text(page_number));
 
         if page_number > 1 {
             wait();
         }
 
         let body = inner_fetch(
-            key,
+            &key,
             &starting_at_timestamp,
             ending_at_timestamp.as_deref(),
             next_page.as_deref(),
