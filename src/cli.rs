@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
@@ -38,6 +39,75 @@ impl Cli {
             .map_err(|_| Error::InvalidDuration(digits.to_owned()))?;
 
         Ok(numbers)
+    }
+
+    /// Loads API keys for service providers based on user selection.
+    ///
+    /// If the user explicitly chose providers, this returns an error if any are missing keys.
+    /// If no providers were specified, it returns all providers that have keys available
+    /// and ignores those that don't.
+    pub fn load_providers(&self) -> miette::Result<Vec<ProviderKeyPair>> {
+        match self.user_selected_providers() {
+            // Strict mode: user specified providers, error if keys missing.
+            Some(validated_user_inputs) => self
+                .provider_blueprints()
+                .into_iter()
+                .filter(|ProviderSpec { provider, .. }| validated_user_inputs.contains(provider))
+                .map(
+                    |ProviderSpec {
+                         provider,
+                         key,
+                         missing_key_error,
+                     }| {
+                        match key {
+                            Some(key_found) => Ok((provider, key_found)),
+                            None => Err(missing_key_error.into()),
+                        }
+                    },
+                )
+                .collect::<miette::Result<Vec<ProviderKeyPair>>>(),
+
+            // Auto mode: No providers specified by user.
+            // Return all providers that have API keys available.
+            // Silently skip providers without keys.
+            None => {
+                let available_provider = self
+                    .provider_blueprints()
+                    .into_iter()
+                    .filter_map(|ProviderSpec { provider, key, .. }| {
+                        key.map(|key_found| (provider, key_found))
+                    })
+                    .collect();
+
+                Ok(available_provider)
+            }
+        }
+    }
+
+    /// Cleaned-up version of user inputs due to potential duplicates.
+    fn user_selected_providers(&self) -> Option<Vec<Provider>> {
+        let providers = self.provider.as_ref()?;
+        let deduplicated = providers.iter().unique().cloned().collect();
+
+        Some(deduplicated)
+    }
+
+    /// Returns a list of supported providers and their associated API keys and errors.
+    /// Configure them right here.
+    /// I should move this into src/config/ in the future, maybe.
+    pub fn provider_blueprints(&self) -> [ProviderSpec; 2] {
+        [
+            ProviderSpec {
+                provider: Provider::Anthropic,
+                key: self.anthropic_admin_api_key.clone(),
+                missing_key_error: Error::AnthropicKeyNotFound,
+            },
+            ProviderSpec {
+                provider: Provider::Openai,
+                key: self.openai_admin_api_key.clone(),
+                missing_key_error: Error::OpenaiKeyNotFound,
+            },
+        ]
     }
 }
 
@@ -79,7 +149,15 @@ pub struct Cli {
         hide_env_values = true,
         global = true
     )]
-    pub anthropic_admin_api_key: Option<String>, // This is the way to make it optional.
+    pub anthropic_admin_api_key: Option<String>,
+
+    #[arg(
+        long,
+        env = "OPENAI_ADMIN_API_KEY",
+        hide_env_values = true,
+        global = true
+    )]
+    pub openai_admin_api_key: Option<String>,
 
     // #[serde(skip)]
     // Decided to include this key in the command signature itself to ensure integrity
@@ -88,10 +166,10 @@ pub struct Cli {
     #[arg(
         long,
         value_delimiter = ',',
-        default_value = "anthropic",
-        global = true
+        // default_value = "anthropic", Nope.
+        global = true,
     )]
-    pub provider: Vec<Provider>,
+    pub provider: Option<Vec<Provider>>,
 }
 
 #[derive(Subcommand, Debug, Serialize)]
@@ -135,8 +213,23 @@ pub enum Grouping {
     // Provider, // No, for now.
 }
 
-#[derive(Clone, Debug, Serialize, ValueEnum, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, ValueEnum, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "kebab-case")]
 pub enum Provider {
     Anthropic,
+    Openai,
 }
+
+/// This is a blueprint for each provider to run the load_providers function.
+/// The function runs this vector and checks if the key exists in the system.
+/// If not, it raises the associated error.
+/// This struct is not used in the main application logic.
+pub struct ProviderSpec {
+    pub provider: Provider,
+    pub key: Option<String>,
+    pub missing_key_error: Error,
+}
+
+/// a simple pair representing a validated provider and its required api key.
+/// This is used to control the main logic, determining which provider to dispatch fetch to.
+pub type ProviderKeyPair = (Provider, String);
