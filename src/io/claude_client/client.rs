@@ -1,7 +1,7 @@
 use jiff::Zoned;
 use miette::IntoDiagnostic;
 
-use super::dtos::{MessagesUsageReport, UsageDataBucket};
+use super::dtos::{BucketByTime, ResponsePage};
 use crate::app::App;
 
 const API_VERSION: &str = "2023-06-01";
@@ -14,7 +14,7 @@ pub fn fetch(
     ctx: &App,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
-) -> miette::Result<Vec<UsageDataBucket>> {
+) -> miette::Result<Vec<BucketByTime>> {
     let key = ctx.cli.try_get_anthropic_key()?.to_owned();
 
     // RFC 3339, this API expects this format.
@@ -30,7 +30,7 @@ pub fn fetch(
 
     // Start empty.
     let mut next_page: Option<String> = None;
-    let mut usages: Vec<UsageDataBucket> = vec![];
+    let mut usages: Vec<BucketByTime> = vec![];
 
     while has_more {
         // First things first, give users something to look at.
@@ -65,7 +65,7 @@ fn inner_fetch(
     starting_at_timestamp: &str,
     ending_at_timestamp: Option<&str>,
     next_page: Option<&str>,
-) -> miette::Result<MessagesUsageReport> {
+) -> miette::Result<ResponsePage> {
     let request = ureq::get(USAGE_REPORT_ENDPOINT)
         .header("anthropic-version", API_VERSION)
         .header("X-Api-Key", key)
@@ -94,7 +94,7 @@ fn inner_fetch(
         .call()
         .into_diagnostic()?
         .body_mut()
-        .read_json::<MessagesUsageReport>()
+        .read_json::<ResponsePage>()
         .into_diagnostic()?;
 
     Ok(body)

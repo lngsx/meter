@@ -12,7 +12,7 @@ use std::hash::Hasher;
 use twox_hash::XxHash64;
 
 use cli::{Cli, Commands, Grouping, Metric, SumArgs};
-use io::claude_client::UsageDataBucket;
+use io::claude_client::BucketByTime;
 
 fn main() -> miette::Result<()> {
     let cli = Cli::new();
@@ -64,7 +64,7 @@ fn main() -> miette::Result<()> {
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
                 // Everyone uses the same usages.
-                let usages: Vec<UsageDataBucket> =
+                let usages: Vec<BucketByTime> =
                     io::claude_client::fetch(&app, &report_start, None)?;
 
                 match &app.cli.command {
