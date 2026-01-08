@@ -12,7 +12,7 @@ use std::hash::Hasher;
 use twox_hash::XxHash64;
 
 use cli::{Cli, Commands, Grouping, Metric, SumArgs};
-use io::claude_client::UsageDataBucket;
+use io::claude_client::BucketByTime;
 
 fn main() -> miette::Result<()> {
     let cli = Cli::new();
@@ -63,17 +63,19 @@ fn main() -> miette::Result<()> {
                 let days_ago = app.cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
-                // Everyone uses the same usages.
-                let usages: Vec<UsageDataBucket> =
+                // Everyone uses the same unified_usages.
+                let anthropic_usages: Vec<BucketByTime> =
                     io::claude_client::fetch(&app, &report_start, None)?;
+                let unified_usages =
+                    calculation::transformation::unify_from_anthropic(anthropic_usages)?;
 
                 match &app.cli.command {
                     // meter raw.
                     Commands::Raw => {
                         if app.cli.unformatted {
-                            serde_json::to_string(&usages).into_diagnostic()?
+                            serde_json::to_string(&unified_usages).into_diagnostic()?
                         } else {
-                            serde_json::to_string_pretty(&usages).into_diagnostic()?
+                            serde_json::to_string_pretty(&unified_usages).into_diagnostic()?
                         }
                     }
 
@@ -84,7 +86,7 @@ fn main() -> miette::Result<()> {
                             group_by: None,
                             ..
                         } => {
-                            let summed = calculation::claude::calculate_total_cost(usages)?;
+                            let summed = calculation::claude::calculate_total_cost(unified_usages)?;
 
                             format(summed, app.cli.unformatted)
                         }
@@ -92,19 +94,20 @@ fn main() -> miette::Result<()> {
                         SumArgs {
                             metric: Metric::Cost,
                             group_by: Some(Grouping::Model),
-                        } => {
-                            calculation::claude::costs_by_model_as_csv(usages, app.cli.unformatted)?
-                        }
+                        } => calculation::claude::costs_by_model_as_csv(
+                            unified_usages,
+                            app.cli.unformatted,
+                        )?,
 
                         SumArgs {
                             metric: Metric::Tokens,
                             group_by: Some(Grouping::Model),
-                        } => calculation::claude::tokens_by_model_as_csv(usages)?,
+                        } => calculation::claude::tokens_by_model_as_csv(unified_usages)?,
 
                         SumArgs {
                             metric: Metric::Tokens,
                             group_by: None,
-                        } => calculation::claude::sum_total_tokens(usages).to_string(),
+                        } => calculation::claude::sum_total_tokens(unified_usages).to_string(),
                     },
                 }
             }

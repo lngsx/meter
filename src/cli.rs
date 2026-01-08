@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 
@@ -135,7 +135,7 @@ pub enum Grouping {
     // Provider, // No, for now.
 }
 
-#[derive(Clone, Debug, Serialize, ValueEnum)]
+#[derive(Clone, Debug, Serialize, ValueEnum, Deserialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Provider {
     Anthropic,

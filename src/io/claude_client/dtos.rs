@@ -1,21 +1,14 @@
-#![allow(dead_code)] // To silence the compiler warnings.
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 
-// These were all llm generated from this:
-// https://platform.claude.com/docs/en/api/admin/usage_report/retrieve_messages
-// I was too lazy to do it by hand. 🙂
-//
-// Note that the type of tokens has to be integer and be later converted during calculation
-// for all the good stuff; for example, it suggests intentionality, discreteness, and countability.
+// API Reference: https://docs.anthropic.com/en/api/admin/usage-report/retrieve-messages
 
-/// Response for the Get Messages Usage Report endpoint.
-///
-/// API Reference: https://docs.anthropic.com/en/api/admin/usage-report/retrieve-messages
+/// Response from the endpoint, paged.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MessagesUsageReport {
+pub struct ResponsePage {
     /// A list of usage data buckets.
-    pub data: Vec<UsageDataBucket>,
+    pub data: Vec<BucketByTime>,
 
     /// Indicates if there are more results available.
     pub has_more: bool,
@@ -24,17 +17,17 @@ pub struct MessagesUsageReport {
     pub next_page: Option<String>,
 }
 
-/// Represents a specific time bucket of usage data.
+/// The response page body, partitioned by time.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct UsageDataBucket {
-    /// Start of the time bucket (inclusive) in RFC 3339 format.
+pub struct BucketByTime {
+    /// Inclusive - include this very exact moment, in RFC 3339 format.
     pub starting_at: String,
 
-    /// End of the time bucket (exclusive) in RFC 3339 format.
+    /// Exclusive - not include, in RFC 3339 format.
     pub ending_at: String,
 
-    /// List of usage items for this time bucket.
-    pub results: Vec<UsageResult>,
+    /// List of usage items for this time bucket. The real work is inside it.
+    pub results: Vec<UsageEntry>,
 }
 
 /// Represents a single usage aggregation result.
@@ -42,7 +35,7 @@ pub struct UsageDataBucket {
 /// Fields corresponding to grouping parameters (like `model`, `api_key_id`, etc.)
 /// will be `None` if that specific grouping was not requested.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub struct UsageResult {
+pub struct UsageEntry {
     /// The number of uncached input tokens processed.
     pub uncached_input_tokens: u64,
 
