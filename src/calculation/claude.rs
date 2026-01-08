@@ -5,11 +5,11 @@ use std::collections::HashMap;
 
 use crate::config::pricing_table::{PRICING, PricingTable};
 use crate::error::Error;
-use crate::io::claude_client::{BucketByTime, UsageEntry};
+use crate::io::unified_dtos::{UnifiedBucketByTime, UnifiedUsageEntry};
 
 /// Calculates total cost in dollars across all buckets.
 /// Returns an error if a model's price is missing from the lookup table.
-pub fn calculate_total_cost(usages: Vec<BucketByTime>) -> miette::Result<f64> {
+pub fn calculate_total_cost(usages: Vec<UnifiedBucketByTime>) -> miette::Result<f64> {
     flatten_usage_buckets(usages)
         .iter()
         .try_fold(0.0, |summed_result, result_entry| {
@@ -32,7 +32,7 @@ pub fn calculate_total_cost(usages: Vec<BucketByTime>) -> miette::Result<f64> {
 }
 
 /// Simple sum of all input and output tokens across all buckets.
-pub fn sum_total_tokens(usages: Vec<BucketByTime>) -> u64 {
+pub fn sum_total_tokens(usages: Vec<UnifiedBucketByTime>) -> u64 {
     flatten_usage_buckets(usages)
         .iter()
         .fold(0, |acc, result_entry| {
@@ -46,7 +46,7 @@ pub fn sum_total_tokens(usages: Vec<BucketByTime>) -> u64 {
 }
 
 /// Aggregates total tokens grouped by model name, returned as CSV.
-pub fn tokens_by_model_as_csv(usages: Vec<BucketByTime>) -> miette::Result<String> {
+pub fn tokens_by_model_as_csv(usages: Vec<UnifiedBucketByTime>) -> miette::Result<String> {
     let usage_results = flatten_usage_buckets(usages);
     let keyed_results = into_key_pairs(usage_results)?;
 
@@ -69,7 +69,7 @@ pub fn tokens_by_model_as_csv(usages: Vec<BucketByTime>) -> miette::Result<Strin
 /// Aggregates costs grouped by model name, returned as CSV.
 /// If `unformatted` is false, modifies keys to include cost for CLI plotting tools.
 pub fn costs_by_model_as_csv(
-    usages: Vec<BucketByTime>,
+    usages: Vec<UnifiedBucketByTime>,
     unformatted: bool,
 ) -> miette::Result<String> {
     let usage_results = flatten_usage_buckets(usages);
@@ -137,7 +137,7 @@ fn calculate_cost(tokens: u64, price_per_million: f64) -> f64 {
 /// It reads the full model name that gets reported (e.g., "claude-sonnet-4-5-datexyz"),
 /// and matches it to our simpler one ("claude-sonnet-4-5").
 /// Panics on missing entries to force me to add them to the table.
-fn find_price(result_entry: &UsageEntry) -> miette::Result<&PricingTable> {
+fn find_price(result_entry: &UnifiedUsageEntry) -> miette::Result<&PricingTable> {
     let context_window = &result_entry.context_window;
 
     // Find the pricing data from the lookup table.
@@ -198,14 +198,14 @@ fn grouped_to_csv<T: Serialize>(grouped_hashmap: HashMap<String, T>) -> miette::
 }
 
 /// Flattens a collection of usage buckets into a single list of results.
-fn flatten_usage_buckets(usages: Vec<BucketByTime>) -> Vec<UsageEntry> {
+fn flatten_usage_buckets(usages: Vec<UnifiedBucketByTime>) -> Vec<UnifiedUsageEntry> {
     usages
         .into_iter()
         .flat_map(|bucket| bucket.results) // pluck it.
         .collect()
 }
 
-type GroupedUsage = Vec<(String, UsageEntry)>;
+type GroupedUsage = Vec<(String, UnifiedUsageEntry)>;
 
 /// Extracts base model names as keys for each usage result.
 ///
@@ -214,7 +214,7 @@ type GroupedUsage = Vec<(String, UsageEntry)>;
 ///
 /// This also helps validate that each reporting model name exists in the pricing table.
 /// Returns Err immediately if any model is not found.
-fn into_key_pairs(results: Vec<UsageEntry>) -> miette::Result<GroupedUsage> {
+fn into_key_pairs(results: Vec<UnifiedUsageEntry>) -> miette::Result<GroupedUsage> {
     results
         .into_iter()
         .map(|entry| {
