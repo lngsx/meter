@@ -5,14 +5,19 @@ mod config;
 mod display;
 mod error;
 mod io;
+mod router;
 
 use jiff::{Span, Zoned};
 use miette::{IntoDiagnostic, WrapErr, miette};
 use std::hash::Hasher;
 use twox_hash::XxHash64;
 
-use cli::{Cli, Commands, Grouping, Metric, Provider, SumArgs};
+use cli::{Cli, Provider};
 use io::claude_client::BucketByTime;
+
+use self::io::unified_dtos::UnifiedBucketByTime;
+
+// use crate::calculation::unified::UsageReport;
 
 fn main() -> miette::Result<()> {
     let cli = Cli::new();
@@ -64,21 +69,20 @@ fn main() -> miette::Result<()> {
                 let days_ago = app.cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
-                // Sum should happens here.
-                // Then format should happens here.
-                providers.iter().try_fold(
-                    "".to_owned(),
-                    |acc, (_provider, _)| -> miette::Result<String> {
-                        // My idea now is to try to make this function symmetric.
-                        // So that the higher-level logic is plain and simple.
-                        // If I can live with the messiness inside this function,
-                        // I will go with it.
-                        let result = does_the_thing(&app, &report_start)?;
+                // Keep the higher-level logic symmetric.
+                // This makes it easy to swap the closure body for thread spawning later.
+                // If I can live with the messiness inside this function, I will go with it.
+                let joined_results = providers
+                    .iter()
+                    .map(|(provider, _)| try_fetch_unified(&app, &report_start, provider))
+                    .collect::<miette::Result<Vec<Vec<_>>>>()?
+                    .into_iter()
+                    .flatten()
+                    .collect();
 
-                        // Working on it, relax.
-                        Ok(format!("{}{}", acc, result))
-                    },
-                )?
+                let report = router::does_the_thing(&app, joined_results)?;
+
+                report.render(app.cli.no_animate)?
             }
         };
 
@@ -93,6 +97,24 @@ fn main() -> miette::Result<()> {
 }
 
 // private
+fn try_fetch_unified(
+    ctx: &app::App,
+    report_start: &Zoned,
+    provider: &Provider,
+) -> miette::Result<Vec<UnifiedBucketByTime>> {
+    match *provider {
+        Provider::Anthropic => {
+            let anthropic_usages: Vec<BucketByTime> =
+                crate::io::claude_client::fetch(ctx, report_start, None)?;
+            let unified_usages =
+                crate::calculation::transformation::unify_from_anthropic(anthropic_usages)?;
+
+            Ok(unified_usages)
+        }
+
+        _ => unimplemented!("Do it already!"),
+    }
+}
 
 /// Formats a number as currency or plain text.
 ///
@@ -166,51 +188,4 @@ fn create_cache_file_path(args_signature: &str) -> miette::Result<std::path::Pat
     let file_path = dir.join(file_name);
 
     Ok(file_path)
-}
-
-/// We will see...
-fn does_the_thing(ctx: &app::App, report_start: &Zoned) -> miette::Result<String> {
-    let anthropic_usages: Vec<BucketByTime> = io::claude_client::fetch(ctx, report_start, None)?;
-    let unified_usages = calculation::transformation::unify_from_anthropic(anthropic_usages)?;
-
-    let output = match &ctx.cli.command {
-        // meter raw.
-        Commands::Raw => {
-            if ctx.cli.unformatted {
-                serde_json::to_string(&unified_usages).into_diagnostic()?
-            } else {
-                serde_json::to_string_pretty(&unified_usages).into_diagnostic()?
-            }
-        }
-
-        // meter sum.
-        Commands::Sum(args) => match args {
-            SumArgs {
-                metric: Metric::Cost,
-                group_by: None,
-                ..
-            } => {
-                let summed = calculation::claude::calculate_total_cost(unified_usages)?;
-
-                format(summed, ctx.cli.unformatted)
-            }
-
-            SumArgs {
-                metric: Metric::Cost,
-                group_by: Some(Grouping::Model),
-            } => calculation::claude::costs_by_model_as_csv(unified_usages, ctx.cli.unformatted)?,
-
-            SumArgs {
-                metric: Metric::Tokens,
-                group_by: Some(Grouping::Model),
-            } => calculation::claude::tokens_by_model_as_csv(unified_usages)?,
-
-            SumArgs {
-                metric: Metric::Tokens,
-                group_by: None,
-            } => calculation::claude::sum_total_tokens(unified_usages).to_string(),
-        },
-    };
-
-    Ok(output)
 }

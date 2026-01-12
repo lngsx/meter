@@ -225,3 +225,23 @@ fn into_key_pairs(results: Vec<UnifiedUsageEntry>) -> miette::Result<GroupedUsag
         })
         .collect()
 }
+
+// impl Sum for UnifiedUsageEntry {
+//     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+//         // Start with Default (all zeros/Nones) and fold (accumulate) the results
+//         iter.fold(Self::default(), |acc, x| {
+//             Self {
+//                 // Sum the numeric fields
+//                 uncached_input_tokens: acc.uncached_input_tokens + x.uncached_input_tokens,
+//                 cache_read_input_tokens: acc.cache_read_input_tokens + x.cache_read_input_tokens,
+//                 output_tokens: acc.output_tokens + x.output_tokens,
+//
+//                 // Logic for Option<String>:
+//                 // If 'acc' has a model, keep it. Otherwise, take 'x's model.
+//                 // This preserves the grouping key if it exists.
+//                 model: acc.model.or(x.model),
+//                 context_window: acc.context_window.or(x.context_window),
+//             }
+//         })
+//     }
+// }
