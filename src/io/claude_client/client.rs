@@ -1,8 +1,8 @@
 use jiff::Zoned;
-use miette::IntoDiagnostic;
 
 use super::dtos::{BucketByTime, ResponsePage};
 use crate::app::App;
+use crate::prelude::*;
 
 const API_VERSION: &str = "2023-06-01";
 const BUCKET_WIDTH: &str = "1h";
@@ -14,7 +14,7 @@ pub fn fetch(
     ctx: &App,
     starting_at: &Zoned,
     ending_at: Option<&Zoned>,
-) -> miette::Result<Vec<BucketByTime>> {
+) -> AppResult<Vec<BucketByTime>> {
     let key = ctx.cli.try_get_anthropic_key()?.to_owned();
 
     // RFC 3339, this API expects this format.
@@ -65,7 +65,7 @@ fn inner_fetch(
     starting_at_timestamp: &str,
     ending_at_timestamp: Option<&str>,
     next_page: Option<&str>,
-) -> miette::Result<ResponsePage> {
+) -> AppResult<ResponsePage> {
     let request = ureq::get(USAGE_REPORT_ENDPOINT)
         .header("anthropic-version", API_VERSION)
         .header("X-Api-Key", key)

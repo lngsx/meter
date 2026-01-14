@@ -1,5 +1,4 @@
-use miette::{Context, IntoDiagnostic};
-use serde::Serialize;
+use crate::prelude::*;
 use std::collections::HashMap;
 
 /// Represents usage data in different formats for reporting.
@@ -22,7 +21,7 @@ impl UsageReport {
     /// Renders the report into a string based on its variant.
     /// - Maps become CSV data.
     /// - Numeric values (Money/Token) become formatted strings.
-    pub fn render(&self, no_format: bool) -> miette::Result<String> {
+    pub fn render(&self, no_format: bool) -> AppResult<String> {
         match self {
             // Numeric reports: Format as currency or raw numbers.
             UsageReport::Token(number) => Ok(Self::render_token(number)),
@@ -38,7 +37,7 @@ impl UsageReport {
     }
 
     /// Internal helper: Serializes map data into a valid CSV string.
-    fn format_csv(&self, no_format: bool) -> miette::Result<String> {
+    fn format_csv(&self, no_format: bool) -> AppResult<String> {
         match self {
             UsageReport::Map(hp) => {
                 /// Temporary struct to define the CSV column layout.

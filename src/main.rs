@@ -5,21 +5,22 @@ mod config;
 mod display;
 mod error;
 mod io;
+mod prelude;
 mod router;
 
 use jiff::{Span, Zoned};
-use miette::{IntoDiagnostic, WrapErr, miette};
 use std::hash::Hasher;
 use twox_hash::XxHash64;
 
 use cli::{Cli, Provider};
 use io::claude_client::BucketByTime;
+use prelude::*;
 
 use self::io::unified_dtos::UnifiedBucketByTime;
 
 // use crate::calculation::unified::UsageReport;
 
-fn main() -> miette::Result<()> {
+fn main() -> AppResult<()> {
     let cli = Cli::new();
     let providers = cli.load_providers()?;
     let app = app::App::new(cli);
@@ -75,7 +76,7 @@ fn main() -> miette::Result<()> {
                 let joined_results = providers
                     .iter()
                     .map(|(provider, _)| try_fetch_unified(&app, &report_start, provider))
-                    .collect::<miette::Result<Vec<Vec<_>>>>()?
+                    .collect::<AppResult<Vec<Vec<_>>>>()?
                     .into_iter()
                     .flatten()
                     .collect();
@@ -101,7 +102,7 @@ fn try_fetch_unified(
     ctx: &app::App,
     report_start: &Zoned,
     provider: &Provider,
-) -> miette::Result<Vec<UnifiedBucketByTime>> {
+) -> AppResult<Vec<UnifiedBucketByTime>> {
     match *provider {
         Provider::Anthropic => {
             let anthropic_usages: Vec<BucketByTime> =
@@ -147,7 +148,7 @@ fn generate_cache_filename(serialized_args: &str) -> String {
 ///
 /// Serializes the provided CLI args to JSON and produces a cache filename
 /// that uniquely identifies the command.
-fn create_args_signature(cli: &Cli) -> miette::Result<String> {
+fn create_args_signature(cli: &Cli) -> AppResult<String> {
     let serialized = serde_json::to_string(cli)
         .into_diagnostic()
         .wrap_err("Failed to serialize command arguments; debounce failed, operation rejected.")?;
@@ -161,7 +162,7 @@ fn create_args_signature(cli: &Cli) -> miette::Result<String> {
 ///
 /// Subtracts `days_ago` from the given time, then returns midnight
 /// of that resulting date in the same timezone.
-fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zoned> {
+fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> AppResult<Zoned> {
     let time_span = Span::new().days(days_ago);
 
     let target_date = zoned_now.checked_sub(time_span).into_diagnostic()?;
@@ -178,7 +179,7 @@ fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zone
 ///
 /// The resulting path follows the pattern:
 /// `{cache_dir}/meter/claude/cache_7a2f4c91b0e3`
-fn create_cache_file_path(args_signature: &str) -> miette::Result<std::path::PathBuf> {
+fn create_cache_file_path(args_signature: &str) -> AppResult<std::path::PathBuf> {
     let dir = dirs::cache_dir()
         .ok_or_else(|| miette!("Could not find a cache directory."))?
         .join("meter")

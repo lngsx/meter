@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
+use crate::prelude::*;
 
 impl Cli {
     /// Convenience constructor to avoid redundant `Parser` imports in main.
@@ -13,7 +13,7 @@ impl Cli {
     // A poor man's solution for a credentials store.
     // I will later come back to it to improve if I add more providers.
     // Just platforming it now so I can understand the big picture easily in the future.
-    pub fn try_get_anthropic_key(&self) -> miette::Result<&String> {
+    pub fn try_get_anthropic_key(&self) -> AppResult<&String> {
         let key = self
             .anthropic_admin_api_key
             .as_ref()
@@ -25,7 +25,7 @@ impl Cli {
     /// An another poor man's solution to the compact date range string parser.
     /// Return a number of day user put in.
     /// Only support day unit for now.
-    pub fn try_parse_since(&self) -> miette::Result<u64> {
+    pub fn try_parse_since(&self) -> AppResult<u64> {
         let since = &self.since;
 
         let Some(digits) = since.strip_suffix('d') else {
@@ -46,7 +46,7 @@ impl Cli {
     /// If the user explicitly chose providers, this returns an error if any are missing keys.
     /// If no providers were specified, it returns all providers that have keys available
     /// and ignores those that don't.
-    pub fn load_providers(&self) -> miette::Result<Vec<ProviderKeyPair>> {
+    pub fn load_providers(&self) -> AppResult<Vec<ProviderKeyPair>> {
         match self.user_selected_providers() {
             // Strict mode: user specified providers, error if keys missing.
             Some(validated_user_inputs) => self
@@ -65,7 +65,7 @@ impl Cli {
                         }
                     },
                 )
-                .collect::<miette::Result<Vec<ProviderKeyPair>>>(),
+                .collect::<AppResult<Vec<ProviderKeyPair>>>(),
 
             // Auto mode: No providers specified by user.
             // Return all providers that have API keys available.

@@ -1,14 +1,13 @@
-use miette::IntoDiagnostic;
-
 use crate::cli::Provider;
 use crate::io::claude_client::UsageEntry;
 use crate::io::claude_client::dtos::BucketByTime;
 use crate::io::unified_dtos::{UnifiedBucketByTime, UnifiedUsageEntry};
+use crate::prelude::*;
 
 /// Converts a collection of Anthropic-specific usage buckets into a unified format.
 pub fn unify_from_anthropic(
     anthropic_buckets: Vec<BucketByTime>,
-) -> miette::Result<Vec<UnifiedBucketByTime>> {
+) -> AppResult<Vec<UnifiedBucketByTime>> {
     anthropic_buckets
         .into_iter()
         .map(UnifiedBucketByTime::try_from)

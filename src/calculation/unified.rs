@@ -5,6 +5,7 @@ use crate::cli::Provider;
 use crate::config::pricing_table::{PRICING, PricingTable};
 use crate::error::Error;
 use crate::io::unified_dtos::{UnifiedBucketByTime, UnifiedUsageEntry, UnifiedUsageEntryCollapsed};
+use crate::prelude::*;
 
 use super::usage_report::UsageReport;
 
@@ -13,7 +14,7 @@ use super::usage_report::UsageReport;
 // 3. [Tokens Sum]:   Tokens Group -> Fold            -> u64
 // 4. [Cost Group]:   Primitives -> Collapse Cost   -> HashMap
 // 5. [Cost Sum]:     Cost Group   -> Fold            -> u64
-fn _example(buckets: Vec<UnifiedBucketByTime>) -> miette::Result<()> {
+fn _example(buckets: Vec<UnifiedBucketByTime>) -> AppResult<()> {
     let primitive = make_primitives(buckets)?;
 
     let tokens_group = collapse_tokens(primitive.clone());
@@ -34,7 +35,7 @@ fn _example(buckets: Vec<UnifiedBucketByTime>) -> miette::Result<()> {
 /// It reads the full model name that gets reported (e.g., "claude-sonnet-4-5-datexyz"),
 /// and matches it to our simpler one ("claude-sonnet-4-5").
 /// Panics on missing entries to force me to add them to the table.
-fn find_price(result_entry: &UnifiedUsageEntry) -> miette::Result<&PricingTable> {
+fn find_price(result_entry: &UnifiedUsageEntry) -> AppResult<&PricingTable> {
     let context_window = &result_entry.context_window;
 
     // Find the pricing data from the lookup table.
@@ -71,7 +72,7 @@ type BaseModelUsageEntryPair = (String, UnifiedUsageEntry);
 /// Returns Err immediately if any model is not found.
 fn try_into_base_model_pairs(
     results: Vec<UnifiedUsageEntry>,
-) -> miette::Result<Vec<BaseModelUsageEntryPair>> {
+) -> AppResult<Vec<BaseModelUsageEntryPair>> {
     results
         .into_iter()
         .map(|entry| {
@@ -92,10 +93,10 @@ fn try_into_base_model_pairs(
 /// - fold -> fold rows, from bottom, vertically.
 pub fn make_primitives(
     buckets: Vec<UnifiedBucketByTime>,
-) -> miette::Result<HashMap<Provider, HashMap<String, UnifiedUsageEntryCollapsed>>> {
+) -> AppResult<HashMap<Provider, HashMap<String, UnifiedUsageEntryCollapsed>>> {
     let usage_by_provider = collapse_by_providers(buckets).into_iter().try_fold(
         HashMap::new(),
-        |mut providers_map, (provider, entries)| -> miette::Result<_> {
+        |mut providers_map, (provider, entries)| -> AppResult<_> {
             let usage_entries_by_model = try_into_base_model_pairs(entries)?;
 
             let collapsed_usage_by_model =
