@@ -21,11 +21,11 @@ impl UsageReport {
     /// Renders the report into a string based on its variant.
     /// - Maps become CSV data.
     /// - Numeric values (Money/Token) become formatted strings.
-    pub fn render(&self, no_format: bool) -> AppResult<String> {
+    pub fn render(&self, no_format: bool, with_symbol: Option<bool>) -> AppResult<String> {
         match self {
             // Numeric reports: Format as currency or raw numbers.
             UsageReport::Token(number) => Ok(Self::render_token(number)),
-            UsageReport::Money(number) => Ok(Self::render_money(number, no_format)),
+            UsageReport::Money(number) => Ok(Self::render_money(number, no_format, with_symbol)),
 
             // Map reports: Serialize to CSV.
             UsageReport::Map(_hp) => self.format_csv(no_format),
@@ -40,10 +40,13 @@ impl UsageReport {
     fn format_csv(&self, no_format: bool) -> AppResult<String> {
         match self {
             UsageReport::Map(hp) => {
-                /// Temporary struct to define the CSV column layout.
+                /// Temporary struct to define the CSV column layout for render groupping.
+                /// There are 2 columns: entity name and formatted value.
                 #[derive(Serialize)]
                 struct CsvRow {
-                    model_summary_row: String,
+                    /// Left column, for an entity name.
+                    display_name: String,
+                    /// Right column, for formatted value.
                     content: String,
                 }
 
@@ -52,9 +55,33 @@ impl UsageReport {
                     .from_writer(vec![]);
 
                 for (key, value) in hp {
+                    let (display_name, content) = match value {
+                        // This is a special case when rendering money inside csv.
+                        //
+                        // When formatting is enabled, include the cost in the name.
+                        // example: "model-name-123 ($1.23)"
+                        //
+                        // This works well for piping to tools like uplot:
+                        // - The display string is in the left cell.
+                        // - The numeric value is in the right cell for sorting, for example, | sort --xx |
+                        //   since dollar-prefixed numbers can't be sorted programmartically.
+                        UsageReport::Money(_) => {
+                            // Make render's with_symbol shadow the no_format flip.
+                            // It's basically this: if no format → no dollar sign.
+                            // Note: Could make this configurable via CLI flag.
+                            let cost_preview = value.render(no_format, Some(!no_format))?;
+
+                            // We need this -> model-name-123 ($1.23).
+                            let display_column = format!("{} ({})", key, cost_preview);
+
+                            (display_column, cost_preview)
+                        }
+                        _ => (key.clone(), value.render(no_format, None)?), // Just passing them along.
+                    };
+
                     let row = CsvRow {
-                        model_summary_row: key.clone(),
-                        content: value.render(no_format)?, // Reuse the renderer.
+                        display_name,
+                        content,
                     };
 
                     writer
@@ -85,12 +112,21 @@ impl UsageReport {
         value.to_string()
     }
 
-    fn render_money(value: &f64, no_format: bool) -> String {
+    /// Render money.
+    /// with_symbol is optional to maintain backward compatibility; default is true.
+    /// Note: I will later replace this with something like rusty-money.
+    fn render_money(value: &f64, no_format: bool, with_symbol: Option<bool>) -> String {
+        // Should this returns .amount() in the future?
         if no_format {
+            // example: 1.23456
             return value.to_string();
         }
 
-        format!("${:.2}", value)
+        // This should be enough for now.
+        let symbol = if with_symbol.unwrap_or(true) { "$" } else { "" };
+
+        // example: $1.23 or 1.23, depending on optional with_symbol.
+        format!("{}{:.2}", symbol, value)
     }
 }
 

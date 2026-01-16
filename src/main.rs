@@ -83,7 +83,7 @@ fn main() -> AppResult<()> {
 
                 let report = router::does_the_thing(&app, joined_results)?;
 
-                report.render(app.cli.no_animate)?
+                report.render(app.cli.unformatted, None)?
             }
         };
 
