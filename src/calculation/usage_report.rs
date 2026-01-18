@@ -69,12 +69,15 @@ impl UsageReport {
                             // Make render's with_symbol shadow the no_format flip.
                             // It's basically this: if no format → no dollar sign.
                             // Note: Could make this configurable via CLI flag.
-                            let cost_preview = value.render(no_format, Some(!no_format))?;
+                            let cost_with_symbol = value.render(no_format, Some(!no_format))?;
+                            let cost_without_symbol = value.render(no_format, Some(false))?;
 
                             // We need this -> model-name-123 ($1.23).
-                            let display_column = format!("{} ({})", key, cost_preview);
+                            let display_column = format!("{} ({})", key, cost_with_symbol);
 
-                            (display_column, cost_preview)
+                            // We don't need the right column to have a dollar sign as it breaks the
+                            // program like uplot.
+                            (display_column, cost_without_symbol)
                         }
                         _ => (key.clone(), value.render(no_format, None)?), // Just passing them along.
                     };
