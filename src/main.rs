@@ -18,8 +18,6 @@ use prelude::*;
 
 use self::io::unified_dtos::UnifiedBucketByTime;
 
-// use crate::calculation::unified::UsageReport;
-
 fn main() -> AppResult<()> {
     let cli = Cli::new();
     let providers = cli.load_providers()?;
@@ -115,17 +113,6 @@ fn try_fetch_unified(
 
         _ => unimplemented!("Do it already!"),
     }
-}
-
-/// Formats a number as currency or plain text.
-///
-/// Formats it as USD with 2 decimal places (e.g., "$123.45").
-fn format(calculated_number: f64, no_format: bool) -> String {
-    if no_format {
-        return calculated_number.to_string();
-    }
-
-    format!("${:.2}", calculated_number)
 }
 
 /// Hashes serialized arguments into a cache filename.

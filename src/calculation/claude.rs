@@ -1,4 +1,6 @@
-use itertools::Itertools;
+// A graveyard.
+
+/* use itertools::Itertools;
 use std::collections::HashMap;
 
 use crate::config::pricing_table::{PRICING, PricingTable};
@@ -243,4 +245,4 @@ fn into_key_pairs(results: Vec<UnifiedUsageEntry>) -> AppResult<GroupedUsage> {
 //             }
 //         })
 //     }
-// }
+// } */
