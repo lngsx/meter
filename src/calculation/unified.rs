@@ -1,3 +1,49 @@
+//! # The Calculation Logic.
+//!
+//! Instead of calculating it case by case, this module serialize the buckets into a primitive
+//! form, a HashMap before sending them to be calculated.
+//!
+//! It works like this.
+//!
+//! `Response -> Unified Buckets -> [Primitives] -> Any Calculation You Want`
+//!
+//! ## The primitive.
+//! The primitive stores values like a table with columns for detailed data and rows for entries.
+//!
+//! ## The verbs.
+//!
+//! ### Collapse
+//! An abstract term that handles the calculation by collapsing columns from right to left into a
+//! single column. (result is still a HashMap)
+//!
+//! Example:
+//! |key| 1 | 2 | 3 | <--------- it reduces from the right
+//!
+//! -> |key| 6
+//!
+//! ### Fold
+//! An abstract term that sums pre-calculated rows from the bottom up to a single value (a decimal,
+//! for example).
+//!
+//! Example:
+//! |key 1| 6
+//! |key 2| 7  ^
+//! |key 3| 8  |
+//! |key 4| 8  |
+//!         it reduces from botttom
+//!
+//! -> 29
+//!
+//! You dynamically apply fold/collapse to derive the data you want.
+//!
+//! ## Important Note
+//! These are mental tools, not code rules.
+//!
+//! The words "Collapse" and "Fold" are just here to help think clearly.
+//! They don't mean we have to use specific rust things. They are just a convention
+//! to help separate "combining columns" from "summing rows."
+//!
+
 use itertools::Itertools;
 use std::collections::HashMap;
 
@@ -10,9 +56,9 @@ use crate::prelude::*;
 use super::usage_report::UsageReport;
 
 // 1. [Primitives]: Group by provider. (The Base)
-// 2. [Tokens Group]: Primitives -> Collapse Tokens -> HashMap
+// 2. [Tokens Group]: Primitives ->   Collapse Tokens -> HashMap
 // 3. [Tokens Sum]:   Tokens Group -> Fold            -> u64
-// 4. [Cost Group]:   Primitives -> Collapse Cost   -> HashMap
+// 4. [Cost Group]:   Primitives ->   Collapse Cost   -> HashMap
 // 5. [Cost Sum]:     Cost Group   -> Fold            -> u64
 fn _example(buckets: Vec<UnifiedBucketByTime>) -> AppResult<()> {
     let primitive = make_primitives(buckets)?;
@@ -83,11 +129,12 @@ fn try_into_base_model_pairs(
         .collect()
 }
 
+/// Creates the "Primitive" state.
+///
 /// Collapses time-bucketed usage data into a nested map indexed by Provider and Model.
+/// This aggregates token counts (uncached, cached, and output) across all time buckets.
 ///
-/// This aggregates token counts (uncached, cached, and output) across all time buckets,
-/// grouping the final results first by the cloud provider and then by the specific model name.
-///
+/// Any future calculations should start from this return value.
 /// Terminology:
 /// - collapse -> Fold columns, from the right, horizontally.
 /// - fold -> fold rows, from bottom, vertically.
@@ -121,18 +168,9 @@ pub fn make_primitives(
     Ok(usage_by_provider)
 }
 
-/// Collapses usage tokens by provider.
+/// Primitives -> Tokens HashMap
 ///
-/// Takes nested provider and usage entry data and aggregates them
-/// into a simple provider-to-total-usage mapping.
-///
-/// # Arguments
-///
-/// * `primitive` - A map of providers to their usage entries
-///
-/// # Returns
-///
-/// A map of each provider to its total aggregated token usage
+/// Transforms the Primitive data into a flat Provider -> Total Tokens map.
 pub fn collapse_tokens(
     primitive: HashMap<Provider, HashMap<String, UnifiedUsageEntryCollapsed>>,
 ) -> HashMap<String, u64> {
@@ -165,6 +203,8 @@ pub fn collapse_tokens(
         .sum()
 }
 
+/// Reduction: HashMap -> Number
+///
 /// Sums the pre-calculated products of each row into a single value.
 pub fn fold<T>(some_map: HashMap<String, T>) -> T
 where
@@ -173,10 +213,12 @@ where
     some_map.into_values().sum()
 }
 
-/// Collapses nested usage data into a flat map of model names and their calculated costs.
+/// Primitives -> Cost HashMap
 ///
-/// Costs are computed using the global `PRICING` table. If the same model appears across
-/// multiple providers, their costs are summed together.
+/// Transforms the Primitive data into a Model -> Cost map.
+///
+/// Costs are computed using the global `PRICING` table.
+/// This is where the conversion from Integer Tokens to Float Money happens
 pub fn collapse_cost(
     primitive: HashMap<Provider, HashMap<String, UnifiedUsageEntryCollapsed>>,
 ) -> HashMap<String, f64> {
