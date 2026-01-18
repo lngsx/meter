@@ -1,15 +1,16 @@
-use itertools::Itertools;
-use miette::{Context, IntoDiagnostic};
-use serde::Serialize;
+// A graveyard.
+
+/* use itertools::Itertools;
 use std::collections::HashMap;
 
 use crate::config::pricing_table::{PRICING, PricingTable};
 use crate::error::Error;
 use crate::io::unified_dtos::{UnifiedBucketByTime, UnifiedUsageEntry};
+use crate::prelude::*;
 
 /// Calculates total cost in dollars across all buckets.
 /// Returns an error if a model's price is missing from the lookup table.
-pub fn calculate_total_cost(usages: Vec<UnifiedBucketByTime>) -> miette::Result<f64> {
+pub fn calculate_total_cost(usages: Vec<UnifiedBucketByTime>) -> AppResult<f64> {
     flatten_usage_buckets(usages)
         .iter()
         .try_fold(0.0, |summed_result, result_entry| {
@@ -46,7 +47,7 @@ pub fn sum_total_tokens(usages: Vec<UnifiedBucketByTime>) -> u64 {
 }
 
 /// Aggregates total tokens grouped by model name, returned as CSV.
-pub fn tokens_by_model_as_csv(usages: Vec<UnifiedBucketByTime>) -> miette::Result<String> {
+pub fn tokens_by_model_as_csv(usages: Vec<UnifiedBucketByTime>) -> AppResult<String> {
     let usage_results = flatten_usage_buckets(usages);
     let keyed_results = into_key_pairs(usage_results)?;
 
@@ -71,7 +72,7 @@ pub fn tokens_by_model_as_csv(usages: Vec<UnifiedBucketByTime>) -> miette::Resul
 pub fn costs_by_model_as_csv(
     usages: Vec<UnifiedBucketByTime>,
     unformatted: bool,
-) -> miette::Result<String> {
+) -> AppResult<String> {
     let usage_results = flatten_usage_buckets(usages);
     let keyed_results = into_key_pairs(usage_results)?;
 
@@ -137,7 +138,7 @@ fn calculate_cost(tokens: u64, price_per_million: f64) -> f64 {
 /// It reads the full model name that gets reported (e.g., "claude-sonnet-4-5-datexyz"),
 /// and matches it to our simpler one ("claude-sonnet-4-5").
 /// Panics on missing entries to force me to add them to the table.
-fn find_price(result_entry: &UnifiedUsageEntry) -> miette::Result<&PricingTable> {
+fn find_price(result_entry: &UnifiedUsageEntry) -> AppResult<&PricingTable> {
     let context_window = &result_entry.context_window;
 
     // Find the pricing data from the lookup table.
@@ -168,7 +169,7 @@ struct GroupByModel<T> {
 }
 
 /// Converts a hashmap of grouped data into a CSV-formatted string.
-fn grouped_to_csv<T: Serialize>(grouped_hashmap: HashMap<String, T>) -> miette::Result<String> {
+fn grouped_to_csv<T: Serialize>(grouped_hashmap: HashMap<String, T>) -> AppResult<String> {
     let mut writer = csv::WriterBuilder::new()
         .has_headers(false) // I don't want a header.
         .from_writer(vec![]);
@@ -214,7 +215,7 @@ type GroupedUsage = Vec<(String, UnifiedUsageEntry)>;
 ///
 /// This also helps validate that each reporting model name exists in the pricing table.
 /// Returns Err immediately if any model is not found.
-fn into_key_pairs(results: Vec<UnifiedUsageEntry>) -> miette::Result<GroupedUsage> {
+fn into_key_pairs(results: Vec<UnifiedUsageEntry>) -> AppResult<GroupedUsage> {
     results
         .into_iter()
         .map(|entry| {
@@ -225,3 +226,23 @@ fn into_key_pairs(results: Vec<UnifiedUsageEntry>) -> miette::Result<GroupedUsag
         })
         .collect()
 }
+
+// impl Sum for UnifiedUsageEntry {
+//     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+//         // Start with Default (all zeros/Nones) and fold (accumulate) the results
+//         iter.fold(Self::default(), |acc, x| {
+//             Self {
+//                 // Sum the numeric fields
+//                 uncached_input_tokens: acc.uncached_input_tokens + x.uncached_input_tokens,
+//                 cache_read_input_tokens: acc.cache_read_input_tokens + x.cache_read_input_tokens,
+//                 output_tokens: acc.output_tokens + x.output_tokens,
+//
+//                 // Logic for Option<String>:
+//                 // If 'acc' has a model, keep it. Otherwise, take 'x's model.
+//                 // This preserves the grouping key if it exists.
+//                 model: acc.model.or(x.model),
+//                 context_window: acc.context_window.or(x.context_window),
+//             }
+//         })
+//     }
+// } */

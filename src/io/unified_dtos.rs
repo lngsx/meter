@@ -53,3 +53,23 @@ pub struct UnifiedUsageEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window: Option<String>,
 }
+
+/// A collapsed version of UnifiedUsageEntry. It aggregates everything inside.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct UnifiedUsageEntryCollapsed {
+    /// The number of uncached input tokens processed.
+    pub uncached_input_tokens: u64,
+
+    /// The number of input tokens read from the cache.
+    pub cache_read_input_tokens: u64,
+
+    /// The number of output tokens generated.
+    pub output_tokens: u64,
+
+    /// Model name used.
+    pub model: String,
+
+    // Context window size used (e.g., "0-200k", "200k-1M"). Null if not grouping by context window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<String>,
+}

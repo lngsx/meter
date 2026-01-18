@@ -1,7 +1,8 @@
-use jiff::{Timestamp, ToSpan};
-use miette::IntoDiagnostic;
-
 use std::fs;
+
+use jiff::{Timestamp, ToSpan};
+
+use crate::prelude::*;
 
 /// Retrieves cached content if it exists and hasn't expired.
 /// Returns `None` if the file doesn't exist or has exceeded its TTL.
@@ -9,7 +10,7 @@ pub fn try_retrieve_cache(
     cache_file_path: &std::path::Path,
     ttl: &i64,
     system_now: &Timestamp,
-) -> miette::Result<Option<String>> {
+) -> AppResult<Option<String>> {
     if !cache_file_path.try_exists().into_diagnostic()? {
         return Ok(None);
     }
@@ -30,7 +31,7 @@ pub fn try_write_cache(
     body_string: &str,
     ttl: &i64,
     system_now: &Timestamp,
-) -> miette::Result<()> {
+) -> AppResult<()> {
     // Ensure the directory exists.
     if let Some(parent) = cache_file_path.parent() {
         fs::create_dir_all(parent).into_diagnostic()?;
@@ -56,7 +57,7 @@ fn is_cache_expired(
     cache_file_path: &std::path::Path,
     system_now: &Timestamp,
     ttl: &i64,
-) -> miette::Result<bool> {
+) -> AppResult<bool> {
     let metadata = fs::metadata(cache_file_path).into_diagnostic()?;
     let file_mtime = metadata.modified().into_diagnostic()?;
     let expiration_time = Timestamp::try_from(file_mtime).into_diagnostic()? + ttl.minutes();

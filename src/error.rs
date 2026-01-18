@@ -40,6 +40,18 @@ Try running `echo $ANTHROPIC_ADMIN_API_KEY` to check if it's present or restart 
     )]
     AnthropicKeyNotFound,
 
+    #[error("OpenAI API key not found.")]
+    #[diagnostic(
+        code(meter::config::api_key),
+        help(
+"Ensure that the ANTHROPIC_ADMIN_API_KEY environment variable is set with your API key.\n\
+Try running `echo $ANTHROPIC_ADMIN_API_KEY` to check if it's present or restart your shell.
+            "
+        ),
+        url("https://platform.claude.com/docs/en/build-with-claude/administration-api")
+    )]
+    OpenaiKeyNotFound,
+
     /// I am too lazy to add every model to the table, so this is the price for users.
     /// This will take them to the GitHub issue form, prefilled.
     /// The good thing is, at least I have something to play with in the miette error report.

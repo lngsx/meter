@@ -5,17 +5,22 @@ mod config;
 mod display;
 mod error;
 mod io;
+mod prelude;
+mod router;
 
 use jiff::{Span, Zoned};
-use miette::{IntoDiagnostic, WrapErr, miette};
 use std::hash::Hasher;
 use twox_hash::XxHash64;
 
-use cli::{Cli, Commands, Grouping, Metric, SumArgs};
+use cli::{Cli, Provider};
 use io::claude_client::BucketByTime;
+use prelude::*;
 
-fn main() -> miette::Result<()> {
+use self::io::unified_dtos::UnifiedBucketByTime;
+
+fn main() -> AppResult<()> {
     let cli = Cli::new();
+    let providers = cli.load_providers()?;
     let app = app::App::new(cli);
     let args_signature = create_args_signature(&app.cli)?;
     let cache_file_path = create_cache_file_path(&args_signature)?;
@@ -63,53 +68,20 @@ fn main() -> miette::Result<()> {
                 let days_ago = app.cli.try_parse_since()? as i64;
                 let report_start = calculate_start_date(&zoned_now, days_ago)?;
 
-                // Everyone uses the same unified_usages.
-                let anthropic_usages: Vec<BucketByTime> =
-                    io::claude_client::fetch(&app, &report_start, None)?;
-                let unified_usages =
-                    calculation::transformation::unify_from_anthropic(anthropic_usages)?;
+                // Keep the higher-level logic symmetric.
+                // This makes it easy to swap the closure body for thread spawning later.
+                // If I can live with the messiness inside this function, I will go with it.
+                let joined_results = providers
+                    .iter()
+                    .map(|(provider, _)| try_fetch_unified(&app, &report_start, provider))
+                    .collect::<AppResult<Vec<Vec<_>>>>()?
+                    .into_iter()
+                    .flatten()
+                    .collect();
 
-                match &app.cli.command {
-                    // meter raw.
-                    Commands::Raw => {
-                        if app.cli.unformatted {
-                            serde_json::to_string(&unified_usages).into_diagnostic()?
-                        } else {
-                            serde_json::to_string_pretty(&unified_usages).into_diagnostic()?
-                        }
-                    }
+                let report = router::does_the_thing(&app, joined_results)?;
 
-                    // meter sum.
-                    Commands::Sum(args) => match args {
-                        SumArgs {
-                            metric: Metric::Cost,
-                            group_by: None,
-                            ..
-                        } => {
-                            let summed = calculation::claude::calculate_total_cost(unified_usages)?;
-
-                            format(summed, app.cli.unformatted)
-                        }
-
-                        SumArgs {
-                            metric: Metric::Cost,
-                            group_by: Some(Grouping::Model),
-                        } => calculation::claude::costs_by_model_as_csv(
-                            unified_usages,
-                            app.cli.unformatted,
-                        )?,
-
-                        SumArgs {
-                            metric: Metric::Tokens,
-                            group_by: Some(Grouping::Model),
-                        } => calculation::claude::tokens_by_model_as_csv(unified_usages)?,
-
-                        SumArgs {
-                            metric: Metric::Tokens,
-                            group_by: None,
-                        } => calculation::claude::sum_total_tokens(unified_usages).to_string(),
-                    },
-                }
+                report.render(app.cli.unformatted, None)?
             }
         };
 
@@ -124,16 +96,23 @@ fn main() -> miette::Result<()> {
 }
 
 // private
+fn try_fetch_unified(
+    ctx: &app::App,
+    report_start: &Zoned,
+    provider: &Provider,
+) -> AppResult<Vec<UnifiedBucketByTime>> {
+    match *provider {
+        Provider::Anthropic => {
+            let anthropic_usages: Vec<BucketByTime> =
+                crate::io::claude_client::fetch(ctx, report_start, None)?;
+            let unified_usages =
+                crate::calculation::transformation::unify_from_anthropic(anthropic_usages)?;
 
-/// Formats a number as currency or plain text.
-///
-/// Formats it as USD with 2 decimal places (e.g., "$123.45").
-fn format(calculated_number: f64, no_format: bool) -> String {
-    if no_format {
-        return calculated_number.to_string();
+            Ok(unified_usages)
+        }
+
+        _ => unimplemented!("Do it already!"),
     }
-
-    format!("${:.2}", calculated_number)
 }
 
 /// Hashes serialized arguments into a cache filename.
@@ -156,7 +135,7 @@ fn generate_cache_filename(serialized_args: &str) -> String {
 ///
 /// Serializes the provided CLI args to JSON and produces a cache filename
 /// that uniquely identifies the command.
-fn create_args_signature(cli: &Cli) -> miette::Result<String> {
+fn create_args_signature(cli: &Cli) -> AppResult<String> {
     let serialized = serde_json::to_string(cli)
         .into_diagnostic()
         .wrap_err("Failed to serialize command arguments; debounce failed, operation rejected.")?;
@@ -170,7 +149,7 @@ fn create_args_signature(cli: &Cli) -> miette::Result<String> {
 ///
 /// Subtracts `days_ago` from the given time, then returns midnight
 /// of that resulting date in the same timezone.
-fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zoned> {
+fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> AppResult<Zoned> {
     let time_span = Span::new().days(days_ago);
 
     let target_date = zoned_now.checked_sub(time_span).into_diagnostic()?;
@@ -187,7 +166,7 @@ fn calculate_start_date(zoned_now: &Zoned, days_ago: i64) -> miette::Result<Zone
 ///
 /// The resulting path follows the pattern:
 /// `{cache_dir}/meter/claude/cache_7a2f4c91b0e3`
-fn create_cache_file_path(args_signature: &str) -> miette::Result<std::path::PathBuf> {
+fn create_cache_file_path(args_signature: &str) -> AppResult<std::path::PathBuf> {
     let dir = dirs::cache_dir()
         .ok_or_else(|| miette!("Could not find a cache directory."))?
         .join("meter")
