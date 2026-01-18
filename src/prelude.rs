@@ -1,5 +1,5 @@
 // Error things.
-pub use miette::{Context, IntoDiagnostic, miette};
+pub use miette::{Context, IntoDiagnostic, bail, miette};
 
 // Serde things.
 pub use serde::{Deserialize, Serialize};
