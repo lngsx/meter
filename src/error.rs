@@ -77,4 +77,12 @@ Try running `echo $ANTHROPIC_ADMIN_API_KEY` to check if it's present or restart 
         url("https://platform.claude.com/docs/en/api/rate-limits")
     )]
     AnthropicRateLimitExceeded,
+
+    #[error("Rate limit exceeded (HTTP 429). The API is asking us to slow down.")]
+    #[diagnostic(
+        code(meter::api::rate_limit),
+        help("We hit the limit. Try running the command again in a few minutes."),
+        // url("https://platform.claude.com/docs/en/api/rate-limits")
+    )]
+    OpenAiRateLimitExceeded,
 }
