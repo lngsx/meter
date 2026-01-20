@@ -6,7 +6,7 @@ use crate::error::Error::AnthropicRateLimitExceeded;
 use crate::prelude::*;
 
 const API_VERSION: &str = "2023-06-01";
-const BUCKET_WIDTH: &str = "1d";
+const BUCKET_WIDTH: &str = "1h";
 const USAGE_REPORT_ENDPOINT: &str =
     "https://api.anthropic.com/v1/organizations/usage_report/messages";
 const GAP_TIME_BETWEEN_FETCH_IN_SEC: u64 = 5;
