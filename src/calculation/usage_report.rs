@@ -54,6 +54,18 @@ impl UsageReport {
                     .has_headers(false) // I don't want a header.
                     .from_writer(vec![]);
 
+                // When there's no usage data, print one empty row so that downstream
+                // pipes (e.g. `uplot bar -d ,`) receive valid input and don't fail.
+                if hp.is_empty() {
+                    writer
+                        .serialize(CsvRow {
+                            display_name: "No Usage ($0.0)".to_string(),
+                            content: "0".to_string(),
+                        })
+                        .into_diagnostic()
+                        .wrap_err("Failed to serialize empty CSV placeholder row")?;
+                }
+
                 for (key, value) in hp {
                     let (display_name, content) = match value {
                         // This is a special case when rendering money inside csv.
@@ -120,6 +132,10 @@ impl UsageReport {
     /// Note: I will later replace this with something like rusty-money.
     fn render_money(value: &f64, no_format: bool, with_symbol: Option<bool>) -> String {
         // Should this returns .amount() in the future?
+
+        // Normalize -0.0 → 0.0 (IEEE 754 negative zero appears when summing an empty iterator).
+        let value = if *value == 0.0 { 0.0_f64 } else { *value };
+
         if no_format {
             // example: 1.23456
             return value.to_string();
