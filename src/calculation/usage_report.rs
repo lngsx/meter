@@ -120,6 +120,10 @@ impl UsageReport {
     /// Note: I will later replace this with something like rusty-money.
     fn render_money(value: &f64, no_format: bool, with_symbol: Option<bool>) -> String {
         // Should this returns .amount() in the future?
+
+        // Normalize -0.0 → 0.0 (IEEE 754 negative zero appears when summing an empty iterator).
+        let value = if *value == 0.0 { 0.0_f64 } else { *value };
+
         if no_format {
             // example: 1.23456
             return value.to_string();
