@@ -54,6 +54,18 @@ impl UsageReport {
                     .has_headers(false) // I don't want a header.
                     .from_writer(vec![]);
 
+                // When there's no usage data, print one empty row so that downstream
+                // pipes (e.g. `uplot bar -d ,`) receive valid input and don't fail.
+                if hp.is_empty() {
+                    writer
+                        .serialize(CsvRow {
+                            display_name: "No Usage ($0.0)".to_string(),
+                            content: "0".to_string(),
+                        })
+                        .into_diagnostic()
+                        .wrap_err("Failed to serialize empty CSV placeholder row")?;
+                }
+
                 for (key, value) in hp {
                     let (display_name, content) = match value {
                         // This is a special case when rendering money inside csv.
