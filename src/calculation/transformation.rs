@@ -1,7 +1,7 @@
 use crate::cli::Provider;
 use crate::io::claude_client::UsageEntry;
 use crate::io::claude_client::dtos::BucketByTime;
-use crate::io::unified_dtos::{UnifiedBucketByTime, UnifiedUsageEntry};
+use crate::io::unified_dtos::{CacheCreationUsage, UnifiedBucketByTime, UnifiedUsageEntry};
 use crate::prelude::*;
 
 /// Converts a collection of Anthropic-specific usage buckets into a unified format.
@@ -24,6 +24,10 @@ impl From<UsageEntry> for UnifiedUsageEntry {
             context_window: entry.context_window,
             cache_read_input_tokens: entry.cache_read_input_tokens,
             uncached_input_tokens: entry.uncached_input_tokens,
+            cache_creation: CacheCreationUsage {
+                ephemeral_1h_input_tokens: entry.cache_creation.ephemeral_1h_input_tokens,
+                ephemeral_5m_input_tokens: entry.cache_creation.ephemeral_5m_input_tokens,
+            },
             output_tokens: entry.output_tokens,
         }
     }
