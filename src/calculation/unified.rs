@@ -151,6 +151,8 @@ pub fn make_primitives(
                     UnifiedUsageEntryCollapsed::default(),
                     |mut collapsed, _model_name, entry| {
                         collapsed.uncached_input_tokens += entry.uncached_input_tokens;
+                        collapsed.cache_write_1h_input_tokens += entry.cache_creation.ephemeral_1h_input_tokens;
+                        collapsed.cache_write_5m_input_tokens += entry.cache_creation.ephemeral_5m_input_tokens;
                         collapsed.cache_read_input_tokens += entry.cache_read_input_tokens;
                         collapsed.output_tokens += entry.output_tokens;
                         collapsed.model = entry.model.unwrap_or("Unknown".to_owned());
@@ -170,7 +172,13 @@ pub fn make_primitives(
 
 /// Primitives -> Tokens HashMap
 ///
-/// Transforms the Primitive data into a flat Provider -> Total Tokens map.
+/// Transforms the Primitive data into a flat Model -> Total Tokens map.
+///
+/// Note: This has nothing to do with the cost calculation. It exists just so 
+/// I can make the application input argument symmetric, for example, we can 
+/// do things like `--metric=tokens`. It has no meaning anyway because 
+/// this basically piles everything into a single value per model. 
+/// At least we can use it to print out some cool ASCII graph, right?
 pub fn collapse_tokens(
     primitive: HashMap<Provider, HashMap<String, UnifiedUsageEntryCollapsed>>,
 ) -> HashMap<String, u64> {
@@ -181,6 +189,8 @@ pub fn collapse_tokens(
                 HashMap::new(),
                 |mut models_map, (base_model_name, entry)| -> HashMap<String, u64> {
                     let tokens_counts = entry.uncached_input_tokens
+                        + entry.cache_write_1h_input_tokens
+                        + entry.cache_write_5m_input_tokens
                         + entry.cache_read_input_tokens
                         + entry.output_tokens;
 
@@ -233,14 +243,28 @@ pub fn collapse_cost(
                     .find(|table_entry| table_entry.base_model_name == base_model_name)
                     .unwrap();
 
-                let total_input_tokens =
-                    entry.uncached_input_tokens + entry.cache_read_input_tokens;
-                let total_output_tokens = entry.output_tokens;
+                let uncached_input_cost = calculate_cost(entry.uncached_input_tokens, pricing.input_multiplier);
+                let output_cost = calculate_cost(entry.output_tokens, pricing.output_multiplier);
 
-                let input_cost = calculate_cost(total_input_tokens, pricing.input_multiplier);
-                let output_cost = calculate_cost(total_output_tokens, pricing.output_multiplier);
+                let cache_write_1h_cost = calculate_cost(
+                    entry.cache_write_1h_input_tokens,
+                    pricing.cache_write_1h_multiplier,
+                );
+                let cache_write_5m_cost = calculate_cost(
+                    entry.cache_write_5m_input_tokens,
+                    pricing.cache_write_5m_multiplier,
+                );
 
-                (base_model_name, input_cost + output_cost)
+                let cache_read_cost = calculate_cost(entry.cache_read_input_tokens, pricing.cache_read_multiplier);
+
+                (
+                    base_model_name,
+                    uncached_input_cost
+                        + cache_write_1h_cost
+                        + cache_write_5m_cost
+                        + cache_read_cost
+                        + output_cost,
+                )
             })
         });
 
