@@ -105,6 +105,67 @@ impl UsageReport {
                         .wrap_err("Failed to serialize grouped data row to CSV format")?;
                 }
 
+                // After writing all per-model rows, compute and write the total row.
+                //
+                // The map is homogeneous by itself: the `From` impls only ever
+                // produce all-Money or all-Token maps, so inspecting the first element
+                // is enough to determine the type for the entire collection.
+                let all_row: Option<CsvRow> = match hp.values().next() {
+                    // When it is money.
+                    Some(UsageReport::Money(_)) => {
+                        let total: f64 = hp
+                            .values()
+                            .filter_map(|v| {
+                                if let UsageReport::Money(n) = v {
+                                    Some(*n)
+                                } else {
+                                    None
+                                }
+                            })
+                            .sum();
+
+                        let total_report = UsageReport::Money(total);
+                        let cost_with_symbol = total_report.render(no_format, Some(!no_format))?;
+                        let cost_without_symbol = total_report.render(no_format, Some(false))?;
+
+                        Some(CsvRow {
+                            display_name: format!("all ({})", cost_with_symbol),
+                            content: cost_without_symbol,
+                        })
+                    }
+
+                    // When it is token.
+                    Some(UsageReport::Token(_)) => {
+                        let total: u64 = hp
+                            .values()
+                            .filter_map(|v| {
+                                if let UsageReport::Token(n) = v {
+                                    Some(*n)
+                                } else {
+                                    None
+                                }
+                            })
+                            .sum();
+
+                        Some(CsvRow {
+                            display_name: "all".to_string(),
+                            content: total.to_string(),
+                        })
+                    }
+
+                    // Nope.
+                    _ => None,
+                };
+
+                // Write it to the csv.
+                // It will looks like this -> "all ($1.01),1.01".
+                if let Some(row) = all_row {
+                    writer
+                        .serialize(row)
+                        .into_diagnostic()
+                        .wrap_err("Failed to serialize total row to CSV format")?;
+                }
+
                 let data = writer
                     .into_inner()
                     .into_diagnostic()
